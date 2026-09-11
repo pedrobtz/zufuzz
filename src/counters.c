@@ -141,7 +141,7 @@ SEXP zufuzz_region_reset(void) {
 
 /* -- the sink ----------------------------------------------------------- */
 
-SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_) {
+SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_, SEXP size_) {
     int mode = Rf_asInteger(mode_);
 
     if (mode != ZUFUZZ_SINK_NONE && mode != ZUFUZZ_SINK_AFL &&
@@ -150,10 +150,27 @@ SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_) {
     }
 
     if (mode == ZUFUZZ_SINK_AFL) {
-        if (TYPEOF(map_) != RAWSXP) {
-            Rf_error("zufuzz: the AFL sink needs a raw coverage map");
+        /* Two shapes, because the map has two sources: a raw vector, which is
+         * how a test supplies one, and an external pointer into shared
+         * memory, which is what an attached supervisor gives us. Only the raw
+         * vector can be preserved -- shm is owned by the supervisor and
+         * outlives this process. */
+        uint8_t *map = NULL;
+        R_xlen_t n = 0;
+
+        if (TYPEOF(map_) == RAWSXP) {
+            map = RAW(map_);
+            n = XLENGTH(map_);
+        } else if (TYPEOF(map_) == EXTPTRSXP) {
+            map = (uint8_t *) R_ExternalPtrAddr(map_);
+            n = (R_xlen_t) Rf_asReal(size_);
+            if (map == NULL) {
+                Rf_error("zufuzz: the AFL coverage map pointer is NULL");
+            }
+        } else {
+            Rf_error("zufuzz: the AFL sink needs a raw vector or a map pointer");
         }
-        R_xlen_t n = XLENGTH(map_);
+
         if (n < 2 || (n & (n - 1)) != 0) {
             Rf_error(
                 "zufuzz: the AFL coverage map must be a power of two in size, "
@@ -164,9 +181,11 @@ SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_) {
             R_ReleaseObject(zf_afl_holder);
             zf_afl_holder = NULL;
         }
-        R_PreserveObject(map_);
-        zf_afl_holder = map_;
-        zf_afl_map = RAW(map_);
+        if (TYPEOF(map_) == RAWSXP) {
+            R_PreserveObject(map_);
+            zf_afl_holder = map_;
+        }
+        zf_afl_map = map;
         zf_afl_mask = (size_t) n - 1;
     } else {
         if (zf_afl_holder != NULL) {

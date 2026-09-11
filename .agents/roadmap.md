@@ -89,7 +89,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [x] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [x] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
-- [ ] Stage 6 — AFL++ worker protocol
+- [~] Stage 6 — AFL++ worker protocol (CI-verified only)
 - [ ] Stage 7 — `minimize()`
 - [ ] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
 - [ ] Gate B — Trustworthy R feedback
@@ -403,7 +403,7 @@ missing object; `expect = "error"` is rejected up front.
 ## Stage 6 — AFL++ worker protocol
 
 **Depends on:** Stage 5
-**Status:** [ ] not started
+**Status:** [~] implemented; the protocol is verified only by the afl-engine CI job
 
 Modelled on python-afl's `afl.pyx` (235 lines) and its 22-line launcher.
 
@@ -436,6 +436,44 @@ fixed `-s` seed inside a fixed `-E` budget and not by an all-zero bitmap in
 that budget; `-M/-S` runs two workers; the fork server survives a harness that
 loads three packages before `fuzz()`; the persistent loop runs 10 000 inputs
 without growth in RSS beyond the supervisor's own reporting.
+
+Scope and verification, decided here:
+
+- **Deferred fork server, no persistent mode.** Persistent mode saves one
+  `fork()` per input but doubles the protocol state machine, and for an R
+  target the fork is not the expensive part -- R startup is, and the deferred
+  server already pays that once. Stage 12's benchmarks are what should decide
+  whether it earns the complexity, not a guess now.
+- **The shm attach handles both flavours.** `__AFL_SHM_ID` carries a System V
+  segment id on most Linux builds and a POSIX shared-memory *name* on builds
+  compiled with `USEMMAP`, which is the default on macOS. Trying the integer
+  form and falling back to `shm_open()` is how one binary copes with both.
+- **`SIGABRT`, written as 6.** `tools` exports SIGKILL and SIGTERM but not
+  SIGABRT. The choice matters: SIGKILL is what AFL sends a child that overran
+  its timeout, so a self-inflicted SIGKILL would be filed as a hang; SIGUSR1
+  (python-afl's default) hits R's own handler, which saves a workspace and
+  exits cleanly, which AFL reads as "this input was fine". R installs no
+  SIGABRT handler and AFL counts any signal death as a crash.
+- **`engine = "afl"` with no supervisor is an error, not a silent no-op.**
+  Without `__AFL_SHM_ID` the handshake fails on its first write and the
+  harness would return having done nothing -- a harness that appears to work
+  and tests nothing.
+- **The campaign test must not depend on the fuzzer getting lucky.** The
+  first version seeded `"aa"` and asked AFL to find a nested `"zf"` prefix in
+  45 seconds. It passed once and failed once -- a stochastic test, which the
+  working rules above forbid, because a red build then means nothing. AFL++
+  also skips its deterministic mutation stage by default, so "reachable by a
+  byte increment" is not the guarantee it appears to be. The test now seeds
+  one byte from the crash with AFL's RNG fixed, and asserts what it is
+  actually for: the worker speaks the protocol, a crash is detected as a
+  crash, and the artifact is imported with a sidecar. Whether guided search
+  beats unguided is Gate C's question, measured over many seeds in Stage 12.
+- **This stage cannot be verified on a developer machine without AFL++.** The
+  tests split: command-line construction, flag mapping, artifact import,
+  attach failure and handshake refusal run everywhere; the campaign tests are
+  `skip_if_not(engine_available("afl"))` and execute only in the new
+  `afl-engine` CI job. A protocol cannot be verified against a mock of
+  itself.
 
 ## Stage 7 — `minimize()`
 

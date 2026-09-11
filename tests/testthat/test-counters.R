@@ -129,7 +129,7 @@ test_that("the AFL map must be a power of two", {
   on.exit(withr_teardown(), add = TRUE)
 
   expect_error(counter_attach("afl", raw(63L)), "power of two")
-  expect_error(counter_attach("afl", NULL), "raw coverage map")
+  expect_error(counter_attach("afl", NULL), "raw vector or a map pointer")
 })
 
 test_that("libfuzzer and none sinks both use the local region", {

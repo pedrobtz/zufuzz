@@ -20,6 +20,7 @@ Imports:
     digest,
     jsonlite,
     processx,
+    tools,
     utils
 Suggests:
     testthat (>= 3.0.0)

@@ -48,9 +48,13 @@ counter_reset <- function() {
 #' power of two in size so the edge wrap is a mask rather than a division.
 #'
 #' @noRd
-counter_attach <- function(mode = c("none", "afl", "libfuzzer"), map = NULL) {
+counter_attach <- function(mode = c("none", "afl", "libfuzzer"), map = NULL,
+                           size = NULL) {
   mode <- match.arg(mode)
-  invisible(.Call(C_zufuzz_attach_sink, sink_modes[[mode]], map))
+  # A raw vector carries its own length; an external pointer into the
+  # supervisor's shared memory does not, so the size travels separately.
+  size <- size %||% if (is.raw(map)) length(map) else 0
+  invisible(.Call(C_zufuzz_attach_sink, sink_modes[[mode]], map, as.double(size)))
 }
 
 #' @noRd

@@ -53,7 +53,7 @@ SEXP zufuzz_region_alloc(SEXP n_);
 SEXP zufuzz_region_size(void);
 SEXP zufuzz_region_read(void);
 SEXP zufuzz_region_reset(void);
-SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_);
+SEXP zufuzz_attach_sink(SEXP mode_, SEXP map_, SEXP size_);
 SEXP zufuzz_sink_mode(void);
 SEXP zufuzz_is_frozen(void);
 SEXP zufuzz_thaw(void);
@@ -67,5 +67,9 @@ void zufuzz_trace_cmp(uintptr_t pc, const void *a, const void *b, size_t n,
 
 /* protocol_afl.c */
 SEXP zufuzz_afl_supported(void);
+SEXP zufuzz_afl_attach(SEXP id_, SEXP size_);
+SEXP zufuzz_afl_map_ptr(void);
+SEXP zufuzz_afl_map_size(void);
+SEXP zufuzz_afl_forkserver(void);
 
 #endif /* ZUFUZZ_H */
