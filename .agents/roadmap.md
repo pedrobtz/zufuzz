@@ -83,7 +83,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 
 ## Progress tracker
 
-- [~] Stage 0 — Package foundation, CRAN-shaped (green on macOS; CI matrix pending)
+- [x] Stage 0 — Package foundation, CRAN-shaped
 - [ ] Stage 1 — Counter region and sink modes
 - [ ] Stage 2 — Instrumentation planning
 - [ ] Stage 3 — Transformation, binding replacement, `coverage_out`
@@ -109,7 +109,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 ## Stage 0 — Package foundation, CRAN-shaped
 
 **Depends on:** nothing
-**Status:** [~] implemented; green on macOS, CI matrix pending
+**Status:** [x] done — all seven checks green on CI
 
 Work:
 
@@ -148,10 +148,18 @@ Complete when the package installs and loads on all CI platforms, the symbol
 scan passes on all of them, `R CMD check --as-cran` reports no compiled-code
 NOTE anywhere, and `devtools::document()`/`devtools::test()` are clean.
 
-Status note: implemented and green locally on macOS (Apple clang, 0/0/0, symbol
-scan running rather than skipping, and verified to fail when a call to `exit`
-or `fprintf` is injected). The Linux and Windows halves of the criterion are
-pending the first CI run.
+Status: **done**. All seven checks green on the first CI run — macOS,
+Windows, and Ubuntu release/devel/oldrel-1 — each `Status: OK` with
+`checking compiled code ... OK`, under `error-on: '"note"'`.
+
+One qualification worth carrying forward: the symbol scan **runs** on Linux
+and macOS and **skips** on Windows (`SKIP 2 | PASS 6`), because Rtools puts no
+`nm` on the PATH and a PE DLL has no undefined-symbol table to read. Windows
+is covered by R's own "checking compiled code" step instead. So the layering
+rule is machine-enforced on two platforms of three, and if a future stage
+needs it enforced on Windows the tool to reach for is `objdump -p` over the
+import table, not `nm`. The scan was verified to fail on an injected
+`exit()`/`fprintf()` rather than assumed to work.
 
 ## Stage 1 — Counter region and sink modes
 

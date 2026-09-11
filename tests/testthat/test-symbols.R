@@ -10,6 +10,15 @@
 # call reached through a header or an inline function, and it is the same
 # evidence `R CMD check --as-cran` uses when it decides whether to raise the
 # "compiled code calls ..." NOTE.
+#
+# Platform coverage, as measured on CI rather than assumed: this runs on
+# Linux (`nm -D --undefined-only` over the ELF dynamic table) and on macOS
+# (`nm -u`, one leading underscore stripped). On Windows it skips, because
+# Rtools does not put `nm` on the PATH during checks and a PE DLL carries no
+# undefined-symbol table for it to read anyway. Windows is covered instead by
+# R's own "checking compiled code" step, which reports OK there. If the scan
+# skips on a platform where it used to run, that is a regression worth
+# chasing -- a skip is not a pass.
 
 # Deliberately absent from this list:
 #   write, fork, waitpid -- the AFL fork server (Stage 6) writes protocol
