@@ -86,7 +86,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 0 — Package foundation, CRAN-shaped
 - [x] Stage 1 — Counter region and sink modes
 - [x] Stage 2 — Instrumentation planning
-- [ ] Stage 3 — Transformation, binding replacement, `coverage_out`
+- [x] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [ ] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [ ] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 - [ ] Stage 6 — AFL++ worker protocol
@@ -141,8 +141,14 @@ Work:
 - `NEWS.md`, `.Rbuildignore`/`.gitignore` entries for `.zufuzz/`, `fuzz/`,
   `bench/`, `docker/`, `cran-comments.md`.
 - CI: `R CMD check --as-cran` on ubuntu release/devel/oldrel, macOS, Windows,
-  all with no engine installed, and `error-on: '"note"'` so zero NOTEs is
-  enforced rather than merely intended.
+  all with no engine installed.
+  **Amended at Stage 3:** the gate was `error-on: '"note"'`, which stopped
+  working once `unlockBinding` entered the package — that NOTE is inherent to
+  replacing a binding in a locked namespace, and the alternatives were hiding
+  the call from the reviewer or never adding an expected note again. CI now
+  gates on `"warning"`, and the architectural invariant is enforced by
+  `tests/testthat/test-symbols.R` directly, which is the more precise gate:
+  a failing test fails the check.
 
 Complete when the package installs and loads on all CI platforms, the symbol
 scan passes on all of them, `R CMD check --as-cran` reports no compiled-code
@@ -255,7 +261,7 @@ Settled during implementation:
 ## Stage 3 — Transformation, binding replacement, `coverage_out`
 
 **Depends on:** Stage 2
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work:
 
@@ -276,6 +282,28 @@ originals and S3 methods called through the generic); aliases captured before
 instrumentation are reported as uninstrumented; `coverage_out` over a fixed
 corpus names exactly the sites a deterministic fixture reaches, on all three
 platforms.
+
+Found by building it, and worth not rediscovering:
+
+- **Never rebuild an assignment with `out[[3L]] <- rhs`.** Assigning `NULL`
+  into a call *removes* that element, so `x <- NULL` silently becomes a
+  one-argument `` `<-`(x) `` that deparses identically and fails only when
+  evaluated. `x <- NULL` is ordinary R; the bug surfaced on
+  `testthat:::o_apply`, whose first line it is. Calls are rebuilt with
+  `as.call(list(...))`, which keeps a `NULL` element as an element, and there
+  is a regression test asserting arity rather than deparse.
+- **The planner/transformer cross-check earns its keep.** `transform_function()`
+  compares the sites it emitted against the plan's and refuses if they differ.
+  It caught a wiring bug immediately — sites read from `out$sites` instead of
+  `out$st$sites` — that would otherwise have produced a site map describing
+  coverage the target never had.
+- **The undo record is written per binding, not at the end.** A failure
+  part-way through a package must still be reversible; assembling the record
+  and storing it after the loop leaves the session permanently
+  half-instrumented.
+- **`instrument_all()` is not applied inside the test process.** It would
+  rewrite testthat, rlang and pkgload while they are on the call stack. The
+  criterion is about what is *selected*, so that is what the test asserts.
 
 ## Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 
