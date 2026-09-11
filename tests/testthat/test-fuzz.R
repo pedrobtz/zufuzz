@@ -226,9 +226,13 @@ test_that("the nested marker is cleared even when a run errors", {
 })
 
 test_that("an unavailable engine is refused with a message that says so", {
+  skip_if(nzchar(Sys.getenv("__AFL_SHM_ID")), "a supervisor is attached")
+  # afl is implemented, so the refusal names what is actually missing: a
+  # supervisor. Running the handshake and returning silently would leave a
+  # harness that appears to work and tests nothing.
   expect_error(
     fuzz(function(d) NULL, args = character(), engine = "afl"),
-    "not available"
+    "needs a supervisor"
   )
   expect_error(
     fuzz(function(d) NULL, args = character(), engine = "libfuzzer"),

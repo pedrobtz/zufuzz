@@ -22,12 +22,16 @@ static const R_CallMethodDef call_methods[] = {
     {"zufuzz_region_size", (DL_FUNC) &zufuzz_region_size, 0},
     {"zufuzz_region_read", (DL_FUNC) &zufuzz_region_read, 0},
     {"zufuzz_region_reset", (DL_FUNC) &zufuzz_region_reset, 0},
-    {"zufuzz_attach_sink", (DL_FUNC) &zufuzz_attach_sink, 2},
+    {"zufuzz_attach_sink", (DL_FUNC) &zufuzz_attach_sink, 3},
     {"zufuzz_sink_mode", (DL_FUNC) &zufuzz_sink_mode, 0},
     {"zufuzz_is_frozen", (DL_FUNC) &zufuzz_is_frozen, 0},
     {"zufuzz_thaw", (DL_FUNC) &zufuzz_thaw, 0},
     {"zufuzz_region_via_ccallable", (DL_FUNC) &zufuzz_region_via_ccallable, 0},
     {"zufuzz_afl_supported", (DL_FUNC) &zufuzz_afl_supported, 0},
+    {"zufuzz_afl_attach", (DL_FUNC) &zufuzz_afl_attach, 2},
+    {"zufuzz_afl_map_ptr", (DL_FUNC) &zufuzz_afl_map_ptr, 0},
+    {"zufuzz_afl_map_size", (DL_FUNC) &zufuzz_afl_map_size, 0},
+    {"zufuzz_afl_forkserver", (DL_FUNC) &zufuzz_afl_forkserver, 0},
     {NULL, NULL, 0}
 };
 

@@ -100,15 +100,38 @@ fuzz <- function(test_one_input,
         call. = FALSE
       )
     }
-    stop(
-      "zufuzz: engine \"", resolved, "\" is not available in this build of ",
-      "zufuzz yet; use engine = \"none\" to run listed inputs once.",
-      call. = FALSE
-    )
+    if (!identical(resolved, "afl")) {
+      stop(
+        "zufuzz: engine \"", resolved, "\" is not available in this build of ",
+        "zufuzz yet; use engine = \"none\" to run listed inputs once.",
+        call. = FALSE
+      )
+    }
+    # A supervisor announces itself before exec'ing the target. Without one,
+    # the fork server handshake would fail on its first write and the harness
+    # would return having done nothing at all -- so say what is wrong instead.
+    if (!nzchar(Sys.getenv("__AFL_SHM_ID"))) {
+      stop(
+        "zufuzz: engine \"afl\" needs a supervisor. Run this harness under ",
+        "afl-fuzz, or through fuzz_file(engine = \"afl\"); ",
+        "engine = \"none\" runs listed inputs once.",
+        call. = FALSE
+      )
+    }
   }
 
   state$in_fuzz <- TRUE
   on.exit(state$in_fuzz <- FALSE, add = TRUE)
+
+  if (identical(resolved, "afl")) {
+    return(invisible(run_afl_worker(
+      test_one_input = test_one_input,
+      before_each = before_each,
+      rng_seed = rng_seed,
+      gc_torture = gc_torture,
+      artifact_dir = artifact_dir %||% default_artifact_dir()
+    )))
+  }
 
   run_once(
     test_one_input = test_one_input,
@@ -374,4 +397,126 @@ print.zufuzz_run <- function(x, ...) {
     ))
   }
   invisible(x)
+}
+
+# -- the AFL worker ------------------------------------------------------
+
+# `tools` exports SIGKILL, SIGTERM and friends, but not SIGABRT, so the number
+# is written out. POSIX fixes it at 6 on every platform an AFL supervisor runs
+# on, and it is the right signal for this:
+#
+#   SIGKILL  is what AFL itself sends a child that overran its timeout, so a
+#            child that killed itself that way would be filed as a hang.
+#   SIGUSR1  is what python-afl uses, but R installs a handler for it that
+#            saves a workspace and quits -- a clean exit, which AFL would read
+#            as "this input was fine".
+#   SIGABRT  R installs no handler, and AFL counts any signal death as a
+#            crash.
+signal_abort <- 6L
+
+# Under a supervisor the input arrives one of two ways: written to a fixed
+# file whose path AFL substituted for `@@`, or on stdin. The file is
+# preferred because AFL rewrites the same path each round, so reading it is
+# cheaper and unambiguous.
+afl_read_input <- function(max_bytes = 1e7) {
+  args <- commandArgs(trailingOnly = TRUE)
+  candidates <- args[!startsWith(args, "-")]
+  candidates <- candidates[file.exists(candidates) & !dir.exists(candidates)]
+  if (length(candidates)) {
+    return(read_input(candidates[[length(candidates)]]))
+  }
+  con <- file("stdin", "rb")
+  on.exit(close(con), add = TRUE)
+  readBin(con, what = "raw", n = max_bytes)
+}
+
+#' Run as an AFL worker
+#'
+#' Attaches to the supervisor's bitmap, then becomes a deferred fork server.
+#' The parent never returns from the handshake: it *is* the fork server. Each
+#' child comes back with one input to run, runs it, and quits -- so everything
+#' after the `.Call()` below executes only in a child.
+#'
+#' @noRd
+run_afl_worker <- function(test_one_input, before_each, rng_seed, gc_torture,
+                           artifact_dir) {
+  attached <- afl_attach_map()
+
+  rng_state <- NULL
+  if (!is.null(rng_seed)) {
+    set.seed(rng_seed)
+    rng_state <- get(".Random.seed", envir = globalenv())
+  }
+
+  repeat {
+    in_child <- .Call(C_zufuzz_afl_forkserver)
+    if (!isTRUE(in_child)) {
+      # No supervisor was listening, or it went away. Returning lets R exit
+      # through its own path rather than waiting to be killed.
+      break
+    }
+
+    bytes <- afl_read_input()
+    outcome <- with_torture(
+      gc_torture,
+      invoke_target(test_one_input, bytes, before_each, rng_state)
+    )
+
+    if (identical(outcome$kind, "error")) {
+      sidecar <- new_sidecar(
+        bytes,
+        kind = "crash",
+        fingerprint = outcome$fingerprint,
+        traceback = outcome$traceback,
+        harness = harness_path(),
+        rng_seed = rng_seed,
+        engine = "afl"
+      )
+      written <- tryCatch(
+        write_artifact(bytes, sidecar, artifact_dir),
+        error = function(e) NA_character_
+      )
+      report_finding(outcome, written)
+      flush(stderr())
+
+      # The supervisor decides what a crash is by how the child died, so the
+      # child has to actually die of a signal. Raised from R rather than from
+      # compiled code: zufuzz.so is not allowed to abort, and does not need
+      # to be.
+      tools::pskill(Sys.getpid(), signal_abort)
+    }
+
+    # A child runs exactly one input. Not persistent mode: that would save a
+    # fork per input but doubles the protocol state machine, and for an R
+    # target the fork is not the expensive part. Stage 12 benchmarks decide.
+    quit(save = "no", status = 0L, runLast = FALSE)
+  }
+
+  invisible(attached)
+}
+
+afl_attach_map <- function() {
+  shm_id <- Sys.getenv("__AFL_SHM_ID", unset = "")
+  if (!nzchar(shm_id)) {
+    return(FALSE)
+  }
+  size <- suppressWarnings(as.numeric(Sys.getenv("AFL_MAP_SIZE", unset = "")))
+  if (!isTRUE(is.finite(size)) || size <= 0) {
+    size <- 65536
+  }
+  if (!isTRUE(.Call(C_zufuzz_afl_attach, shm_id, size))) {
+    # Worth a word: the campaign will run, but with no feedback at all, and
+    # silence here would look like a target with no branches.
+    message(
+      "==zufuzz== could not attach to the AFL coverage map; ",
+      "the campaign will run unguided"
+    )
+    return(FALSE)
+  }
+  counter_attach(
+    "afl",
+    .Call(C_zufuzz_afl_map_ptr),
+    size = .Call(C_zufuzz_afl_map_size)
+  )
+  TRUE
 }

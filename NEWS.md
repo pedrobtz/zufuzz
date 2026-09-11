@@ -1,5 +1,10 @@
 # zufuzz 0.0.0.9000
 
+* AFL++ support (roadmap Stage 6): `fuzz(engine = "afl")` runs a harness as a
+  deferred fork server under an `afl-fuzz` supervisor, and
+  `fuzz_file(engine = "afl")` drives a campaign and imports its findings under
+  zufuzz's own artifact names. The same harness file runs under AFL or as
+  run-once with nothing changed.
 * `fuzz_file()`, `fuzz_function()`, `engines()` and `engine_available()`
   (roadmap Stage 5). `fuzz_file()` runs a harness in its own process and
   classifies the outcome from the artifact directory, with the exit code only
