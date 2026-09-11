@@ -70,7 +70,16 @@ test_that("the companion is listed but not probed for", {
   # requireNamespace() naming an undeclared package.
   row <- engines()[engines()$engine == "libfuzzer", ]
   expect_false(row$available)
-  expect_match(row$hint, "companion")
+  expect_false(is.na(row$hint))
+
+  # The hint is platform-specific on purpose. Telling a Windows user to
+  # install the companion would be advice that cannot work -- it does not
+  # build under Rtools -- so there the hint points at WSL instead.
+  if (.Platform$OS.type == "windows") {
+    expect_match(row$hint, "WSL|container")
+  } else {
+    expect_match(row$hint, "companion")
+  }
 })
 
 test_that("engines() prints, and says what still works without one", {
