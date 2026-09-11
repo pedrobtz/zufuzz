@@ -176,6 +176,27 @@ test_that("asking for run-once under a supervisor warns", {
   )
 })
 
+test_that("an uninstrumented AFL campaign is warned about", {
+  old <- Sys.getenv("__AFL_SHM_ID", unset = NA)
+  Sys.setenv(`__AFL_SHM_ID` = "not-a-real-id")
+  on.exit(
+    if (is.na(old)) Sys.unsetenv("__AFL_SHM_ID") else Sys.setenv(`__AFL_SHM_ID` = old),
+    add = TRUE
+  )
+  on.exit(uninstrument(), add = TRUE)
+  uninstrument()
+
+  # AFL decides a target is uninstrumented from the bitmap after its dry run
+  # and aborts, so the campaign never starts and the failure surfaces as an
+  # unhelpful "infrastructure" carrying afl-fuzz's wording. Warning here puts
+  # the message next to the cause.
+  expect_warning(
+    fuzz(function(d) NULL, args = character(), engine = "afl", quiet = TRUE,
+         artifact_dir = tempfile()),
+    "nothing is instrumented"
+  )
+})
+
 test_that("the same harness runs without a supervisor", {
   skip_if(
     is.na(installed_zufuzz_lib()),

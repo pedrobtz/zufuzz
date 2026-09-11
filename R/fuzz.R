@@ -453,6 +453,19 @@ afl_read_input <- function(max_bytes = 1e7) {
 #' @noRd
 run_afl_worker <- function(test_one_input, before_each, rng_seed, gc_torture,
                            artifact_dir) {
+  if (identical(instrumentation_report()$n_sites, 0L)) {
+    # AFL decides a target is uninstrumented by looking at the bitmap after
+    # its dry run, and aborts outright if it is still all zero -- so the
+    # campaign never starts, and the failure surfaces as an unhelpful
+    # "infrastructure" with afl-fuzz's own wording. Say it here, where the
+    # cause is obvious.
+    warning(
+      "zufuzz: nothing is instrumented, so the coverage map will stay empty ",
+      "and afl-fuzz will abort with \"no instrumentation detected\". ",
+      "Call instrument_package() or instrument() before fuzz().",
+      call. = FALSE
+    )
+  }
   attached <- afl_attach_map()
 
   rng_state <- NULL
