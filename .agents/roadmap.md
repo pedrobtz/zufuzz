@@ -85,7 +85,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 
 - [x] Stage 0 — Package foundation, CRAN-shaped
 - [x] Stage 1 — Counter region and sink modes
-- [ ] Stage 2 — Instrumentation planning
+- [x] Stage 2 — Instrumentation planning
 - [ ] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [ ] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [ ] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
@@ -118,8 +118,8 @@ Work:
   URLs. No `OS_type`.
   **A dependency is declared by the stage that first uses it, not here** —
   `R CMD check` NOTEs an unused `Imports`, and Stage 0 has no R code at all.
-  So `jsonlite`/`digest` arrive with the sidecars in Stage 4, `processx` with
-  the launcher in Stage 5, and `Suggests: zufuzz.libfuzzer` plus
+  So `digest` arrived with the manifest digest in Stage 2, `jsonlite` arrives
+  with the sidecars in Stage 4, `processx` with the launcher in Stage 5, and `Suggests: zufuzz.libfuzzer` plus
   `Additional_repositories:` only once the companion exists and is
   installable (Stage 11) — declaring a Suggests on a package that does not
   yet exist is an immediate check NOTE.
@@ -205,7 +205,7 @@ Two things settled during implementation, both worth not rediscovering:
 ## Stage 2 — Instrumentation planning
 
 **Depends on:** Stage 1
-**Status:** [ ] not started
+**Status:** [x] done
 
 Pure-R planning pass; modifies nothing.
 
@@ -233,6 +233,24 @@ constructs; the digest is stable across sessions; `instrument_package()` on a
 real small CRAN package plans without error and reports its skips;
 `instrument_all()` never selects a `zufuzz` binding; `recursive = TRUE`
 resolves a dependency graph without cycles or duplicates.
+
+Settled during implementation:
+
+- **A site's address is a path string**, `"2.3"` meaning `body[[2]][[3]]`,
+  `""` the body itself. Stage 3 converts it back with `path_indices()`. A
+  string is what makes an expected site map readable in a test, and asserting
+  the whole map rather than a count is the point: a rule that moves a probe
+  one node is a different instrumentation, and the digest says so.
+- **Nested function literals are reported, not instrumented.** Rewriting
+  inside one would change what `substitute()` sees of the argument it is
+  usually passed as. But the walk still *reads* call arguments looking for
+  them, so a closure-heavy package gets thin coverage it can explain rather
+  than thin coverage it cannot. This is the Gate B "closure-heavy" case, and
+  the report is what will make it diagnosable.
+- **A comparison is a site only when it can be decided statically.** `switch`
+  qualifies in its string form, `grepl`/`regexpr` only with a literal
+  `fixed = TRUE`. A false negative costs some feedback; a false positive
+  would rewrite a call that means something else.
 
 ## Stage 3 — Transformation, binding replacement, `coverage_out`
 
