@@ -49,13 +49,21 @@ jobs:
       # must install, load and pass with nothing else present. Engine
       # dependent tests skip themselves via engine_available().
       #
-      # error-on "note" enforces the Stage 0 gate: zero NOTEs, in particular
-      # no "compiled code calls exit/abort/..." NOTE. That NOTE appearing
-      # means engine code has leaked into this package and belongs in the
-      # zufuzz.libfuzzer companion instead.
+      # The architectural gate is tests/testthat/test-symbols.R, which scans
+      # the built shared object and fails the suite if it can end the R
+      # process, signal it, write to its streams, or reference an engine or
+      # sanitizer symbol. That is enforced here, since a failing test fails
+      # the check.
+      #
+      # error-on is "warning" rather than "note" because one NOTE is
+      # inherent: `unlockBinding` in R/instrument.R, which is how an
+      # instrumented body is put back into a locked namespace. See
+      # cran-comments.md. Gating on zero NOTEs would mean either hiding that
+      # call from the reviewer or never adding an expected note again, and
+      # the symbol scan is the more precise gate anyway.
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"note"'
+          error-on: '"warning"'
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'

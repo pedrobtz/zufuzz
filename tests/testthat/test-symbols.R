@@ -49,6 +49,17 @@ zufuzz_dll_path <- function() {
   dll[["path"]]
 }
 
+# A reload during a development session (`devtools::document()` followed by
+# `devtools::test()` in one process) leaves getLoadedDLLs() reporting the
+# path from the earlier load, whose temp directory is gone. That is a
+# dev-loop artifact, not a problem with the object -- but it must skip with a
+# message that says so, rather than one implying `nm` failed. Under
+# `R CMD check`, which is what CI gates on, the package is installed once and
+# this never arises.
+dll_is_readable <- function(path) {
+  !is.na(path) && nzchar(path) && file.exists(path)
+}
+
 # Undefined (imported) symbols of a shared object, normalised to their C
 # names. Both `nm` spellings are tried because a shared object's undefined
 # symbols live in the dynamic table on Linux, while macOS reports them from
@@ -91,6 +102,7 @@ undefined_symbols <- function(path) {
 test_that("the shared object cannot terminate R or write to its streams", {
   path <- zufuzz_dll_path()
   skip_if(is.na(path), "zufuzz DLL is not loaded")
+  skip_if_not(dll_is_readable(path), "DLL path is stale (package reloaded in-session)")
   skip_if_not(nzchar(Sys.which("nm")), "nm is not available")
 
   syms <- undefined_symbols(path)
@@ -106,6 +118,7 @@ test_that("the shared object cannot terminate R or write to its streams", {
 test_that("the shared object references no engine or sanitizer symbol", {
   path <- zufuzz_dll_path()
   skip_if(is.na(path), "zufuzz DLL is not loaded")
+  skip_if_not(dll_is_readable(path), "DLL path is stale (package reloaded in-session)")
   skip_if_not(nzchar(Sys.which("nm")), "nm is not available")
 
   syms <- undefined_symbols(path)

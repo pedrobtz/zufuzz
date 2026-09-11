@@ -28,11 +28,17 @@ recommended_package_names <- c(
 # like it discovered something and the feedback signal would be noise.
 never_instrument <- "zufuzz"
 
+# `env` and `binding` are where the closure actually lives, recorded at
+# resolution time so that replacement later does not have to look the name up
+# again -- by then the binding may already hold an instrumented copy, and
+# re-resolving would instrument the instrumented.
 new_selection <- function(name, fn = NULL, source = NA_character_,
-                          status = "ok", reason = NA_character_) {
+                          status = "ok", reason = NA_character_,
+                          env = NULL, binding = NA_character_) {
   list(
     name = name, fn = fn, source = source,
-    status = status, reason = reason
+    status = status, reason = reason,
+    env = env, binding = binding
   )
 }
 
@@ -96,7 +102,7 @@ resolve_selection <- function(spec, envir = parent.frame()) {
     if (!is.na(reason)) {
       return(skipped(spec, reason, "namespace"))
     }
-    return(new_selection(spec, value, "namespace"))
+    return(new_selection(spec, value, "namespace", env = ns, binding = nm))
   }
 
   if (grepl(":", spec, fixed = TRUE)) {
@@ -111,7 +117,11 @@ resolve_selection <- function(spec, envir = parent.frame()) {
   if (!is.na(reason)) {
     return(skipped(spec, reason, "local"))
   }
-  new_selection(spec, value, "local")
+  home <- environment(value)
+  if (!is.environment(home)) {
+    home <- envir
+  }
+  new_selection(spec, value, "local", env = home, binding = spec)
 }
 
 #' Every instrumentable closure in a namespace, plus its S3 methods
@@ -148,7 +158,10 @@ select_package <- function(pkg, exclude = character()) {
       }
       next
     }
-    out[[length(out) + 1L]] <- new_selection(qualified, value, "namespace")
+    out[[length(out) + 1L]] <- new_selection(
+      qualified, value, "namespace",
+      env = ns, binding = nm
+    )
   }
 
   s3 <- tryCatch(
@@ -165,7 +178,10 @@ select_package <- function(pkg, exclude = character()) {
       if (!is.na(unsupported_reason(value))) {
         next
       }
-      out[[length(out) + 1L]] <- new_selection(qualified, value, "s3")
+      out[[length(out) + 1L]] <- new_selection(
+        qualified, value, "s3",
+        env = s3, binding = nm
+      )
     }
   }
 

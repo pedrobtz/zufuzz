@@ -1,5 +1,10 @@
 # zufuzz 0.0.0.9000
 
+* `instrument()`, `instrument_package()`, `instrument_all()`,
+  `instrumentation_report()` and `uninstrument()` (roadmap Stage 3) — the
+  first user-facing functions. Rewrites a closure's body so reaching a branch
+  records a hit, preserving value, visibility, laziness, evaluation order,
+  error propagation, `return`/`break`/`next` and `on.exit`.
 * Instrumentation planning (roadmap Stage 2): the AST walk that decides where
   probes go, selection resolution over namespaces and S3 method tables, and a
   manifest digest. Pure R, and it changes nothing — Stage 3 executes a plan.
