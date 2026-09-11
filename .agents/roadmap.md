@@ -84,7 +84,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 ## Progress tracker
 
 - [x] Stage 0 — Package foundation, CRAN-shaped
-- [ ] Stage 1 — Counter region and sink modes
+- [x] Stage 1 — Counter region and sink modes
 - [ ] Stage 2 — Instrumentation planning
 - [ ] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [ ] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
@@ -164,7 +164,7 @@ import table, not `nm`. The scan was verified to fail on an injected
 ## Stage 1 — Counter region and sink modes
 
 **Depends on:** Stage 0
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work:
 
@@ -186,6 +186,21 @@ the expected region in `none` mode on all platforms; the `afl` mode writes the
 expected edge for a known `(prev, id)` sequence into a caller-supplied buffer;
 a fake companion (a test-only shared object) can obtain `(start, end)` through
 the accessor; and the symbol scan still passes.
+
+Two things settled during implementation, both worth not rediscovering:
+
+- **Counters wrap at 256; they do not saturate.** An inline 8-bit counter is
+  `*p += 1` in sancov and `map[loc]++` in AFL, and both engines bucket the
+  result, so a site hit exactly 256 times reads as never hit. Saturating
+  would be friendlier but would make zufuzz's counters mean something
+  different from the native ones libFuzzer sees in the same process. The
+  test asserts the wrap so nobody "fixes" it later.
+- **The fake companion is not a second shared object.** Building one inside
+  `R CMD check` is not worth the portability cost. Instead an internal
+  `.Call` resolves the accessor through
+  `R_GetCCallable("zufuzz", "zufuzz_counter_region")` — the exact path the
+  companion uses — and reports the region it sees. That exercises the
+  registration, which is the part that can break.
 
 ## Stage 2 — Instrumentation planning
 

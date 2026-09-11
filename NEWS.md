@@ -1,5 +1,9 @@
 # zufuzz 0.0.0.9000
 
+* Coverage counter region with its three sink modes (roadmap Stage 1), and
+  the `R_RegisterCCallable()` interface the companion engine package uses to
+  reach it. Still internal: no user-facing functions yet.
+
 * Package foundation (roadmap Stage 0). No user-facing functions yet; the
   native layer registers its routines, reports whether this build can attach
   to an AFL supervisor, and is guarded by a symbol scan asserting that it
