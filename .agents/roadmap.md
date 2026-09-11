@@ -1,24 +1,36 @@
 # zufuzz 0.1.0 implementation roadmap
 
-**Status:** planned, second revision (libFuzzer-embedded design)
-**Design:** [design-zufuzz.md](design-zufuzz.md) (native code and sanitizers are §10)
-**Release target:** `0.1.0` on GitHub / r-universe (not CRAN)
+**Status:** planned, third revision (CRAN package + companion engine package)
+**Design:** [design-zufuzz.md](design-zufuzz.md) (packaging is §13, layering §15,
+execution models §4, sanitizers §10)
+**Release target:** `zufuzz 0.1.0` on **CRAN**; `zufuzz.libfuzzer 0.1.0` on
+r-universe
 
 Each stage leaves the package installable and tested, and does not pull work
 forward from later stages. A stage may be one commit or one pull request; it is
 not merged while its completion criteria are unmet.
 
+Two packages, two tracks. The CRAN core does not wait for the companion;
+Gate A now gates the companion only.
+
 ```text
-foundation (vendored libFuzzer)
-  -> bridge: fuzz() + crash artifacts          -> Gate A
-  -> counters + R instrumentation + cmp tracing -> Gate B
-  -> FuzzedDataProvider
-  -> launcher, replay, minimize
-  -> sanitizer configurations + Docker
-  -> docs, CI smoke
-  -> benchmarks                                -> Gate C
-  -> release
-Track N (native coverage) runs in parallel after Stage 3.
+zufuzz (CRAN)                                   zufuzz.libfuzzer (r-universe)
+  0  foundation, CRAN-shaped                       E0  vendored libFuzzer, GCC + Apple clang
+  1  counter region + sink modes        ---------> E1  bridge: driver, unwind, signals, abort
+  2  instrumentation planning                      E2  in-process sidecars, gate, controls
+  3  transformation, coverage_out                       Gate A — bridge viable in R
+  4  fuzz() run-once, sidecars, replay()           E3  preload object, Configuration B
+  5  launcher, engines(), fuzz_function()          Track N — native coverage (Docker)
+  6  AFL++ worker protocol
+  7  minimize()
+  8  provider + object generation   (parallel, after 0)
+       Gate B — trustworthy R feedback  (needs an engine: AFL++ on CI, companion on CI)
+  9  comparison tracing (companion engine)
+ 10  sanitizer configurations, Docker image
+ 11  docs, CRAN preparation, CI smoke
+ 12  benchmarks
+       Gate C — useful exploration
+ 13  0.1.0 release: CRAN submission + companion tag
 ```
 
 ## Working rules
@@ -26,13 +38,23 @@ Track N (native coverage) runs in parallel after Stage 3.
 - Complete stages in order unless marked parallel.
 - Keep public APIs internal until the stage that documents and exports them.
 - Every stage adds deterministic tests. No unit test may depend on the fuzzer
-  randomly finding an input; feedback tests use fixed `-seed` and `-runs` and
-  fixtures designed to be solved well inside that budget.
-- Anything that can kill the process (crash fixtures, hangs, `abort()`) runs
-  only in subprocess tests via `fuzz_file()`/`processx`, never in the
-  `testthat` process.
-- `src/libfuzzer/` is vendored verbatim from a pinned LLVM release recorded in
-  `src/libfuzzer/VERSION`; never patch it — work around in the bridge.
+  randomly finding an input; feedback tests use fixed `-seed` and `-runs` (or
+  AFL's `-s` and `-E`) and fixtures designed to be solved well inside that
+  budget.
+- Anything that can kill the process (crash fixtures, hangs, `pskill`,
+  `abort()`) runs only in subprocess tests via `fuzz_file()`/`processx`, never
+  in the `testthat` process.
+- **`zufuzz.so` never calls `exit`, `abort`, `_exit`, or writes to stdio.**
+  The Stage 0 symbol scan is a test; it is a CRAN gate as well as a layering
+  gate.
+- Every engine-dependent test is `skip_if_not(engine_available(...))`. CI
+  installs AFL++ on one Ubuntu job and the companion on Ubuntu and macOS; the
+  Windows job and one Ubuntu job run with no engine at all, and that is the
+  configuration `R CMD check --as-cran` is judged on.
+- `src/libfuzzer/` in the companion is vendored verbatim from a pinned LLVM
+  release recorded in `src/libfuzzer/VERSION`; never patch it — work around
+  in the bridge. The companion builds against libFuzzer's documented
+  interface only.
 - Run `air format .` after changing R code; `devtools::document()` after
   changing roxygen or native registration.
 - Record user-facing changes in `NEWS.md` from Stage 1 on.
@@ -40,171 +62,134 @@ Track N (native coverage) runs in parallel after Stage 3.
 
 ## Release scope
 
-0.1.0 delivers: `fuzz()`, `instrument()`, `instrument_package()`,
-`instrument_all()`, `instrumentation_report()`, `fuzz(coverage_out =)`,
-`fuzzed_data_provider()`, `r_object()`, `draw()`,
-`as_seed()`, `object_from()`, `fuzz_file()`,
-`fuzz_function()`, `replay()`, `minimize()`, `preload_path()`; R coverage and comparison tracing;
-crash/timeout/oom artifacts with JSON sidecars; documented sanitizer
-configurations and a Docker image; a CI smoke workflow; benchmarks.
+`zufuzz 0.1.0` delivers: `fuzz(engine =)`, `instrument()`,
+`instrument_package()`, `instrument_all()`, `instrumentation_report()`,
+`coverage_out`, `fuzzed_data_provider()`, `r_object()`, `draw()`,
+`as_seed()`, `object_from()`, `engines()`, `engine_available()`,
+`fuzz_file()`, `fuzz_function()`, `replay()`, `minimize()`; R coverage
+feedback on two engines; the AFL++ child protocol; crash/timeout/oom
+artifacts with JSON sidecars on every engine; documented sanitizer
+configurations and a Docker image; a CI smoke workflow; benchmarks; a clean
+`R CMD check --as-cran` on Linux, macOS, and Windows.
+
+`zufuzz.libfuzzer 0.1.0` delivers: the in-process libFuzzer engine for Linux
+and macOS with comparison tracing, `-fork`/`-jobs`/`-minimize_crash` through
+the re-exec wrapper, and `preload_path()`.
 
 0.1.0 excludes: native coverage as a supported feature, the `adversarial`
-validity level, `sanitizer_build()`,
-an R custom-mutator API, regex hooks, S4/R6/RC instrumentation, Windows
-fuzzing, CRAN.
+validity level, `sanitizer_build()`, `install_engine()`, a LibAFL backend,
+comparison tracing on AFL++, an R custom-mutator API, regex hooks,
+S4/R6/RC instrumentation, and any campaign engine on Windows.
 
 ## Progress tracker
 
-- [ ] Stage 0 — Package foundation with vendored libFuzzer
-- [ ] Stage 1 — Bridge: `fuzz()`, artifacts, signals, unwind
-- [ ] Stage 2 — Sidecars, fingerprints, per-input controls
-- [ ] Gate A — Bridge viable in R
-- [ ] Stage 3 — Counter region and native probe routines
-- [ ] Stage 4 — Instrumentation planning
-- [ ] Stage 5 — Transformation and binding replacement
-- [ ] Stage 6 — Comparison tracing
+- [x] Stage 0 — Package foundation, CRAN-shaped
+- [ ] Stage 1 — Counter region and sink modes
+- [ ] Stage 2 — Instrumentation planning
+- [ ] Stage 3 — Transformation, binding replacement, `coverage_out`
+- [ ] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
+- [ ] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
+- [ ] Stage 6 — AFL++ worker protocol
+- [ ] Stage 7 — `minimize()`
+- [ ] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
 - [ ] Gate B — Trustworthy R feedback
-- [ ] Stage 7 — FuzzedDataProvider and R object generation
-- [ ] Stage 8 — Launcher and `zufuzz_result`
-- [ ] Stage 9 — `replay()`
-- [ ] Stage 10 — `minimize()`
-- [ ] Stage 11 — Sanitizer configurations, preload, Docker image
-- [ ] Stage 12 — Documentation and CI smoke workflow
-- [ ] Stage 13 — Benchmarks
+- [ ] Stage 9 — Comparison tracing (companion engine)
+- [ ] Stage 10 — Sanitizer configurations and Docker image
+- [ ] Stage 11 — Documentation, CRAN preparation, CI smoke workflow
+- [ ] Stage 12 — Benchmarks
 - [ ] Gate C — Useful exploration
-- [ ] Track N — Native coverage feasibility (parallel, after Stage 3)
-- [ ] Stage 14 — 0.1.0 release candidate
+- [ ] Stage 13 — 0.1.0 release
+- [ ] Companion E0 — Foundation with vendored libFuzzer
+- [ ] Companion E1 — Bridge: driver, artifacts, signals, unwind
+- [ ] Companion E2 — In-process sidecars, fingerprint gate, per-input controls
+- [ ] Gate A — Bridge viable in R
+- [ ] Companion E3 — Preload object and Configuration B
+- [ ] Track N — Native coverage feasibility (parallel, after E1)
 
-## Stage 0 — Package foundation with vendored libFuzzer
+## Stage 0 — Package foundation, CRAN-shaped
 
 **Depends on:** nothing
-**Status:** [ ] not started
+**Status:** [x] done — all seven checks green on CI
 
 Work:
 
-- Fill `DESCRIPTION`: title, description, `Authors@R` (including LLVM as `cph`
-  for the vendored code), MIT or Apache-2.0 license, `R (>= 4.1)`,
-  `SystemRequirements: C++17`, `Imports: processx, jsonlite`, URLs.
-- Vendor libFuzzer from a pinned LLVM release into `src/libfuzzer/`; add
-  `src/libfuzzer/VERSION`, `LICENSE.note`, `inst/COPYRIGHTS`.
-- `Makevars`: compile libFuzzer and a stub bridge on Linux/macOS with
-  `CXX_STD = CXX17`; `Makevars.win`: define `ZUFUZZ_NO_LIBFUZZER` and skip it.
-- `src/init.c` with routine registration; `.onLoad` loads the DLL with
-  `library.dynam(local = FALSE)` and documents why.
-- Enforce the layering in design §15 from the first commit: `fdp.c` must not
-  include or reference libFuzzer or `bridge.cpp`, and `counters.c` must not
-  either. Add a build-time or test-time check (symbol scan) so the value layer
-  cannot silently acquire an engine dependency.
+- Fill `DESCRIPTION`: title, description, `Authors@R`, MIT license,
+  `R (>= 4.1)`, `SystemRequirements: AFL++ (optional, for engine = "afl")`,
+  URLs. No `OS_type`.
+  **A dependency is declared by the stage that first uses it, not here** —
+  `R CMD check` NOTEs an unused `Imports`, and Stage 0 has no R code at all.
+  So `jsonlite`/`digest` arrive with the sidecars in Stage 4, `processx` with
+  the launcher in Stage 5, and `Suggests: zufuzz.libfuzzer` plus
+  `Additional_repositories:` only once the companion exists and is
+  installable (Stage 11) — declaring a Suggests on a package that does not
+  yet exist is an immediate check NOTE.
+- `src/`: `init.c` with routine registration (`R_useDynamicSymbols(FALSE)`,
+  `R_forceSymbols(TRUE)`); stubs for `counters.c`, `protocol_afl.c`,
+  `fdp.c`; a shared `zufuzz.h` carrying the platform guard. One `Makevars`
+  for every platform; `protocol_afl.c` compiles to no-ops where System V
+  shared memory is absent, with an internal `.Call` reporting which.
+  No C++, no `Makevars.win`, no `configure`.
+  The companion reaches the counter region through `R_RegisterCCallable()` /
+  `R_GetCCallable()` (Stage 1), **not** through `library.dynam(local =
+  FALSE)`: the second revision needed `RTLD_GLOBAL` because the engine lived
+  in this DLL, and that reason left with the engine.
+- **Symbol scan test**: after build, `nm` (or `dumpbin` on Windows) over
+  `zufuzz.so` asserts no reference to `exit`, `_exit`, `abort`, `printf`,
+  `puts`, `fprintf`, `fputs`, `fwrite`, `write`, or any `__sanitizer_*`
+  symbol. This enforces design §15's layering and CRAN's compiled-code rule
+  at once, from the first commit.
 - `NEWS.md`, `.Rbuildignore`/`.gitignore` entries for `.zufuzz/`, `fuzz/`,
-  `bench/`, `docker/`.
-- Confirm `R CMD check` on the CI matrix (ubuntu release/devel/oldrel, macOS,
-  Windows) with the expected "compiled code calls abort/exit" NOTE documented.
+  `bench/`, `docker/`, `cran-comments.md`.
+- CI: `R CMD check --as-cran` on ubuntu release/devel/oldrel, macOS, Windows,
+  all with no engine installed, and `error-on: '"note"'` so zero NOTEs is
+  enforced rather than merely intended.
 
-Complete when the package installs and loads on all CI platforms, an internal
-`.Call` confirms `LLVMFuzzerRunDriver` is linked on Linux/macOS and absent on
-Windows, and `devtools::document()`/`devtools::test()` are clean.
+Complete when the package installs and loads on all CI platforms, the symbol
+scan passes on all of them, `R CMD check --as-cran` reports no compiled-code
+NOTE anywhere, and `devtools::document()`/`devtools::test()` are clean.
 
-## Stage 1 — Bridge: `fuzz()`, artifacts, signals, unwind
+Status: **done**. All seven checks green on the first CI run — macOS,
+Windows, and Ubuntu release/devel/oldrel-1 — each `Status: OK` with
+`checking compiled code ... OK`, under `error-on: '"note"'`.
+
+One qualification worth carrying forward: the symbol scan **runs** on Linux
+and macOS and **skips** on Windows (`SKIP 2 | PASS 6`), because Rtools puts no
+`nm` on the PATH and a PE DLL has no undefined-symbol table to read. Windows
+is covered by R's own "checking compiled code" step instead. So the layering
+rule is machine-enforced on two platforms of three, and if a future stage
+needs it enforced on Windows the tool to reach for is `objdump -p` over the
+import table, not `nm`. The scan was verified to fail on an injected
+`exit()`/`fprintf()` rather than assumed to work.
+
+## Stage 1 — Counter region and sink modes
 
 **Depends on:** Stage 0
 **Status:** [ ] not started
 
-The smallest thing that is recognizably Atheris for R: run a closure under
-libFuzzer with no coverage.
-
 Work:
 
-- `fuzz(test_one_input, args, ...)`: validate, refuse `interactive()`, build
-  argv (defaults from the design, named `...` → `-flag=value`), write the
-  re-exec wrapper script (which sets `R_NO_SEGV_HANDLER=1`), set the
-  nested-call marker, call the driver. The driver never returns.
-- Callback: `RAWSXP` copy, invoke closure under `R_UnwindProtect`/`R_tryCatch`,
-  return 0.
-- Escaped R error: print `==zufuzz==` header, condition, bounded traceback to
-  stderr; flush; `abort()`.
-- Reset `SIGSEGV`, `SIGILL`, `SIGBUS`, `SIGINT`, `SIGUSR1`, `SIGUSR2` to
-  `SIG_DFL` before the driver starts; record what was replaced.
-- Windows: implement only "run listed files once" when `ZUFUZZ_NO_LIBFUZZER`.
+- Allocate one `uint8_t` region from a declared site count; refuse resizing
+  after a campaign starts.
+- Probe routine with three sink modes, fixed at attach time: `none`
+  (`region[id]++`), `afl` (`map[id ^ prev]++; prev = id >> 1` into an
+  externally supplied 64 KiB map), `libfuzzer` (`region[id]++`, region
+  registered by the companion). `id` validated in debug builds only.
+- Exported C accessor `zufuzz_counter_region(&start, &end)` and an R-level
+  `.zufuzz_attach_sink(mode, map_ptr)` for engines. `counters.c` references
+  no `__sanitizer_*` symbol in any mode; the symbol scan keeps it that way.
+- Comparison forwarding routines are declared here with a `none`/`afl`
+  no-op body; their `libfuzzer` bodies live in the companion (Stage 9).
+- On Windows everything compiles and `none` mode is fully functional.
 
-Fixtures (subprocess tests, `fuzz/fixtures/`): always-passes; errors on prefix
-`"zf"`; C routine that dereferences NULL; R `repeat {}`; C busy loop that never
-calls `R_CheckUserInterrupt`; harness that calls `quit()`.
+Complete when a fixture that bumps counter *k* on input byte *k* reads back
+the expected region in `none` mode on all platforms; the `afl` mode writes the
+expected edge for a known `(prev, id)` sequence into a caller-supplied buffer;
+a fake companion (a test-only shared object) can obtain `(start, end)` through
+the accessor; and the symbol scan still passes.
 
-Complete when:
-
-- The error fixture produces `crash-<sha1>` with the exact bytes, an
-  `==zufuzz==` diagnostic in stderr, and libFuzzer's error exit code.
-- The NULL-dereference fixture and a `SIGILL`/`SIGBUS` fixture (`__builtin_trap()`,
-  misaligned access) all produce `crash-<sha1>` — proving R's handlers no longer
-  swallow the crash, both with and without the wrapper's `R_NO_SEGV_HANDLER`.
-- Both hang fixtures produce `timeout-<sha1>` under `-timeout=2`.
-- `SIGINT` to the child stops it cleanly; `-runs=100` exits 0 after libFuzzer's
-  final stats, with nothing instrumented and the "no interesting inputs"
-  warning visible (the unguided baseline).
-- `-fork=1 -ignore_crashes=1 -runs=2000` over the error fixture keeps going
-  and produces multiple artifacts, proving re-exec and unwind safety.
-- `-jobs=2` and `-minimize_crash=1` re-exec through the wrapper.
-
-Excluded: sidecars, coverage, provider, launcher polish.
-
-## Stage 2 — Sidecars, fingerprints, per-input controls
+## Stage 2 — Instrumentation planning
 
 **Depends on:** Stage 1
-**Status:** [ ] not started
-
-Work:
-
-- Sidecar JSON next to the artifact, written before `abort()`, SHA-1 computed
-  with the vendored `FuzzerSHA1`; schema per design §8; environment capture
-  excludes environment variables.
-- Fingerprint for R errors (kind, classes, message, normalized call).
-- `ZUFUZZ_EXPECT_FINGERPRINT` gate: mismatching errors return normally.
-- `before_each`, `rng_seed` (copy `.Random.seed`), `gc_torture`
-  (`gctorture`/`gctorture2`, restored on exit).
-- Nested-`fuzz()` detection; interactive-session refusal message.
-
-Complete when a sidecar validates against its schema and names the artifact
-that exists on disk; the fingerprint is byte-identical across two processes;
-the gate makes a two-error fixture abort only on the expected one; `rng_seed`
-makes a `sample()`-dependent fixture deterministic; a PROTECT-bug fixture
-crashes under `gc_torture = TRUE` and not without it.
-
-## Gate A — Bridge viable in R
-
-**Depends on:** Stage 2
-**Status:** [ ] not passed
-
-Pass when every Stage 1–2 fixture behaves identically on Ubuntu (GCC) and
-macOS (Apple clang), with and without `LD_PRELOAD` of an ASan runtime on
-Linux, and 10 000 consecutive escaped errors under `-fork=1 -ignore_crashes=1`
-leak no memory beyond libFuzzer's own reporting. If the signal or unwind
-strategy fails on a platform, that platform is dropped from 0.1 rather than
-worked around in user documentation.
-
-## Stage 3 — Counter region and native probe routines
-
-**Depends on:** Stage 0
-**Status:** [ ] not started
-
-Work:
-
-- Allocate one `uint8_t` region from a declared site count; register with
-  `__sanitizer_cov_8bit_counters_init` and a synthetic `__sanitizer_cov_pcs_init`
-  table; refuse re-registration after `fuzz()` starts.
-- Probe routine: increment `region[id]`, validating `id` in debug builds only.
-- Comparison forwarding routines: memcmp, strcmp, memmem, cmp8 hooks with a
-  synthetic `pc` per comparison site.
-- On Windows the routines are no-ops.
-
-Complete when libFuzzer prints `Loaded 1 modules (N inline 8-bit counters)`
-with the declared N; a fixture that bumps counter k on input byte k reaches
-new coverage exactly when expected; a fixture that forwards a fixed string via
-the memcmp hook is solved by libFuzzer within a small fixed `-runs`, showing
-the hooks are live.
-
-## Stage 4 — Instrumentation planning
-
-**Depends on:** Stage 3
 **Status:** [ ] not started
 
 Pure-R planning pass; modifies nothing.
@@ -215,13 +200,15 @@ Work:
   descend per design §5; identify comparison-call sites in `if`/`while`
   conditions and in supported statement positions.
 - Dense site IDs from (binding name, AST position) in deterministic order.
+  Dense ids are also what makes the AFL edge map collision-free below 64 K
+  sites.
 - Selection resolution: `pkg::fn`, `pkg:::fn`, local names, package-wide with
   S3 table entries, `exclude`; report primitives, missing bindings, duplicates,
   unsupported constructs.
 - `instrument_package(recursive = TRUE)` over `Imports`/`Depends`, and
   `instrument_all(include_base = FALSE)` over loaded namespaces. `zufuzz` is
   excluded unconditionally in both — a test must assert that no zufuzz binding
-  is ever selected, since instrumenting the provider or object assembly would
+  is ever selected, since instrumenting the provider or the worker loop would
   feed engine execution back as target coverage.
 - Manifest digest over instrumentation version, selections, and body digests.
 
@@ -232,9 +219,9 @@ real small CRAN package plans without error and reports its skips;
 `instrument_all()` never selects a `zufuzz` binding; `recursive = TRUE`
 resolves a dependency graph without cycles or duplicates.
 
-## Stage 5 — Transformation and binding replacement
+## Stage 3 — Transformation, binding replacement, `coverage_out`
 
-**Depends on:** Stage 4
+**Depends on:** Stage 2
 **Status:** [ ] not started
 
 Work:
@@ -244,55 +231,142 @@ Work:
   `if` without `else`, `return`/`break`/`next`, `on.exit`, laziness.
 - Replace namespace bindings and S3 table entries, handling locked bindings;
   no-op under `ZUFUZZ_NO_INSTRUMENT=1`.
-- `instrumentation_report()` and the startup summary in `fuzz()`.
-- `fuzz(coverage_out =)`: dump the accumulated hit set against the site map
-  from an `atexit` handler in the bridge (necessary because `fuzz()` never
-  returns), in a `covr`-compatible shape.
+- `instrumentation_report()` and the startup summary.
+- `coverage_out` as a run-once feature: run a set of inputs in `none` mode and
+  write the hit set against the site map in a `covr`-compatible shape. This
+  is engine-free and runs inside `R CMD check`.
 - JIT: rely on R's recompilation; record `enableJIT` level.
 
 Complete when original/transformed fixtures agree on value, visibility, side
 effects, lazy args, errors, and control transfers (including byte-compiled
-originals and S3 methods called through the generic); the nested-prefix
-fixture is solved by `fuzz()` with fixed `-seed`/`-runs` and not by the
-unguided baseline; aliases captured before instrumentation are reported as
-uninstrumented; `coverage_out` written after a bounded campaign names exactly
-the sites a deterministic fixture reaches, and is produced on the finding and
-timeout exit paths too, not only on a clean exit.
+originals and S3 methods called through the generic); aliases captured before
+instrumentation are reported as uninstrumented; `coverage_out` over a fixed
+corpus names exactly the sites a deterministic fixture reaches, on all three
+platforms.
 
-## Stage 6 — Comparison tracing
+## Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 
-**Depends on:** Stage 5
+**Depends on:** Stage 3
 **Status:** [ ] not started
 
 Work:
 
-- Wrappers for `==`, `!=`, `identical`, `%in%`, `startsWith`, `endsWith`,
-  string `switch`, fixed `grepl`/`regexpr` that evaluate the original call and
-  forward per design §5.
-- Strip wrapper frames from reported tracebacks and fingerprints.
-- Bound table forwarding; skip vectorized operands.
+- `fuzz(test_one_input, engine =)`: validate; resolve the engine per design
+  §3; refuse campaigns when `interactive()`; run-once mode over positional
+  files and directories with `before_each`, `rng_seed`, `gc_torture`
+  (restored on exit), and `coverage_out`. Run-once never kills the process.
+- Escaped-error handling shared by every mode: `==zufuzz==` diagnostic,
+  bounded traceback, fingerprint (kind, classes, message, normalized call),
+  sidecar JSON per design §8 with SHA-1 names from `digest`, artifact copy of
+  the input. `ZUFUZZ_EXPECT_FINGERPRINT` gate: mismatching errors are treated
+  as normal.
+- Nested-`fuzz()` detection; interactive refusal message.
+- `replay(path, input)`: `Rscript path input` in a fresh process with
+  `ZUFUZZ_NO_INSTRUMENT=1` — run-once mode, no engine — with structured
+  outcome, fingerprint, and environment comparison against the sidecar;
+  `instrument = TRUE` variant.
 
-Complete when the magic-string fixture (`x == "zufuzz-secret"`), a `%in%`
-fixture, a `switch` fixture, and a fixed-`grepl` fixture are each solved with
-fixed `-seed`/`-runs` and none is solved by the baseline; an S4 `==` method
-fixture still dispatches correctly; fingerprints of instrumented and
-uninstrumented runs of the error fixture match.
+Complete when a sidecar validates against its schema and names the artifact
+that exists on disk; the fingerprint is byte-identical across two processes;
+the gate makes a two-error fixture record only the expected one; `rng_seed`
+makes a `sample()`-dependent fixture deterministic; a PROTECT-bug fixture
+crashes under `gc_torture = TRUE` and not without it (subprocess test); a
+deterministic error artifact replays with the same fingerprint; a normal input
+reports `normal`; a history-dependent fixture is reported as not confirmed;
+all of it on Windows too.
 
-## Gate B — Trustworthy R feedback
+## Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
+
+**Depends on:** Stage 4
+**Status:** [ ] not started
+
+Work:
+
+- `engines()` / `engine_available()`: the search order from design §3
+  (option, env var, companion namespace, `Sys.which`), what was found where,
+  and the install hint for what was not. On Windows: reports no campaign
+  engine and points at WSL.
+- `fuzz_file()` via `processx` with `--vanilla`, `R_NO_SEGV_HANDLER=1`, env
+  passthrough, `time_limit`/`runs` mapping per engine, log capture,
+  **artifact-directory classification** with the exit code as corroboration,
+  sidecar-from-log for native/timeout/oom findings, `stop_reason`, `print()`
+  method, interrupt handling that kills the child, `coverage = TRUE` running
+  `coverage_out` over the final corpus.
+- `tests/fixtures/fake-engine.R`: a supervisor test double that writes
+  artifacts and exit codes on cue, so every `stop_reason` is exercised inside
+  `R CMD check` with no engine.
+- `fuzz_function()`: resolve `fn` by namespace name or serialize it, validate
+  `expect` (reject generic classes), generate the harness with the `input`
+  adapter and `instrument_package()` call, run through `fuzz_file()`, report
+  the harness path.
+
+Complete when each `stop_reason` is produced by the fake engine; interrupting
+the launcher leaves no child; results from quiet and verbose runs are
+identical; a missing package in the harness is `infrastructure`, not
+`finding`; running on a machine with no engine is `infrastructure` with a
+message naming `engines()`; `fuzz_function()` over a fixture package's parser
+with `expect` set finds a planted non-expected error under the fake engine; a
+closure that references a global helper yields `infrastructure` naming the
+missing object; `expect = "error"` is rejected up front.
+
+## Stage 6 — AFL++ worker protocol
+
+**Depends on:** Stage 5
+**Status:** [ ] not started
+
+Modelled on python-afl's `afl.pyx` (235 lines) and its 22-line launcher.
+
+Work:
+
+- `protocol_afl.c`: `shmat` of `__AFL_SHM_ID`; fork server on fds 198/199
+  (hello, go, fork, pid, wait, status); `next_input` reading stdin or the `@@`
+  file; persistent-mode counter. Leaf routines; nothing evaluates R.
+- `fuzz()` under `engine = "afl"` (or `auto` with `__AFL_SHM_ID` set):
+  attach after instrumentation, switch the sink to `afl`, then the R-level
+  `repeat` loop from design §4. Escaped error → sidecar → `tools::pskill(SIGABRT)`.
+- `fuzz_file(engine = "afl")`: `afl-fuzz -i -o -t -x -m … -- Rscript --vanilla
+  harness.R`, `AFL_SKIP_BIN_CHECK=1`, `-V`/`-E` for `time_limit`/`runs`,
+  `-M`/`-S` for `jobs`; import `crashes/`/`hangs/` into `.zufuzz/artifacts/`
+  under `crash-`/`timeout-` names; AFL's directory kept verbatim.
+- `afl-cmin` and `afl-tmin` thin wrappers (used by Stage 7).
+- CI: one Ubuntu job installs `afl++` from apt; all AFL tests are
+  `skip_if_not(engine_available("afl"))`.
+
+Fixtures (subprocess, `fuzz/fixtures/`): always-passes; errors on prefix
+`"zf"`; C routine that dereferences NULL; R `repeat {}`; C busy loop that
+never calls `R_CheckUserInterrupt`.
+
+Complete when, under `afl-fuzz` on the Ubuntu job: the error fixture yields an
+imported `crash-<sha1>` with the exact bytes and a sidecar written by the
+child; the NULL-dereference fixture yields a crash (proving `R_NO_SEGV_HANDLER`
+and `pskill` both reach the supervisor); both hang fixtures yield `hangs/`
+entries imported as `timeout-`; the nested-prefix fixture is solved with a
+fixed `-s` seed inside a fixed `-E` budget and not by an all-zero bitmap in
+that budget; `-M/-S` runs two workers; the fork server survives a harness that
+loads three packages before `fuzz()`; the persistent loop runs 10 000 inputs
+without growth in RSS beyond the supervisor's own reporting.
+
+## Stage 7 — `minimize()`
 
 **Depends on:** Stage 6
-**Status:** [ ] not passed
+**Status:** [ ] not started
 
-Pass when all Stage 4–6 tests pass on Linux and macOS, probe overhead on the
-branch-heavy benchmark is measured and published (not necessarily small), and
-`instrument_package()` succeeds on three real packages of different styles
-(S3-heavy, closure-heavy, thin `.Call` wrapper) with their own test suites
-still passing under instrumentation. If semantic differences appear, narrow
-the supported subset before continuing.
+Work: the gated R-side reducer (delta debugging over bytes, each candidate
+confirmed by `replay()` with `ZUFUZZ_EXPECT_FINGERPRINT`); refuse unconfirmed,
+timeout, and truncated-fingerprint findings; `accelerate = TRUE` runs
+`afl-tmin` first when AFL++ is available (and `-minimize_crash=1` once the
+companion exists), then finishes with the gated reducer; reconfirm the output;
+report sizes and status.
 
-## Stage 7 — FuzzedDataProvider and R object generation
+Complete when a reducible fixture shrinks and reconfirms with no engine, on
+Windows; a fixture whose smaller variants raise a *different* error does not
+shrink past that point; the original artifact is byte-identical afterwards;
+`runs < 3` is rejected; the accelerated path yields a result the gated
+reducer accepts unchanged.
 
-**Depends on:** Stage 0
+## Stage 8 — FuzzedDataProvider and R object generation
+
+**Depends on:** Stage 0 · **parallel** with Stages 1–7
 **Status:** [ ] not started
 
 Work: `src/fdp.c` cursor and every method from design §11; `R/fdp.R` object;
@@ -315,187 +389,284 @@ reloads to the same object; `object_from()` on a crash artifact reproduces the
 failing object; generation never errors for any byte sequence at `strict` or
 `nasty`; `draw()` and `fdp$consume_object()` return `identical()` objects for
 the same bytes (one implementation, two front doors — design §15); the whole
-provider and generator surface works in a session where `fuzz()` was never
-called, and on Windows where libFuzzer is absent.
+surface works with no engine installed and on Windows.
 
-## Stage 8 — Launcher and `zufuzz_result`
+## Gate B — Trustworthy R feedback
 
-**Depends on:** Gate A
+**Depends on:** Stages 6, 8; companion E1
+**Status:** [ ] not passed
+
+Pass when all Stage 2–6 tests pass on Linux and macOS under **both** engines
+(AFL++ on the Ubuntu job; the companion on Ubuntu and macOS); the
+nested-prefix fixture is solved by each engine with fixed seed and budget and
+by neither unguided baseline; probe overhead on the branch-heavy benchmark is
+measured and published (not necessarily small); and `instrument_package()`
+succeeds on three real packages of different styles (S3-heavy, closure-heavy,
+thin `.Call` wrapper) with their own test suites still passing under
+instrumentation. If semantic differences appear, narrow the supported subset
+before continuing.
+
+## Stage 9 — Comparison tracing (companion engine)
+
+**Depends on:** Gate B; companion E2
 **Status:** [ ] not started
 
-Work: `fuzz_file()` via `processx` with `--vanilla`, env passthrough,
-`time_limit`/`runs` mapping, log capture, libFuzzer stats and artifact
-parsing, sidecar-from-log for native/timeout/oom findings, `stop_reason`
-classification, `print()` method, interrupt handling that kills the child.
-Then `fuzz_function()` on top of it: resolve `fn` by namespace name or
-serialize it, validate `expect` (reject generic classes), generate the harness
-script with the `input` adapter and `instrument_package()` call, run it, and
-report the harness path.
+Work (in `zufuzz`, the rewrite; in the companion, the forwarding):
 
-Complete when each `stop_reason` is produced by a fixture; interrupting the
-launcher leaves no child; results from quiet and verbose runs are identical;
-a missing package in the harness is `infrastructure`, not `finding`;
-`fuzz_function()` over a fixture package's parser with `expect` set finds a
-planted non-expected error and does not report expected rejections; a closure
-that references a global helper yields `infrastructure` with a message naming
-the missing object; `expect = "error"` is rejected up front.
+- Wrappers for `==`, `!=`, `identical`, `%in%`, `startsWith`, `endsWith`,
+  string `switch`, fixed `grepl`/`regexpr` that evaluate the original call
+  and forward per design §5 through the routines declared in Stage 1. The
+  companion supplies the `libfuzzer` bodies (`__sanitizer_weak_hook_memcmp`
+  etc., synthetic `pc` per site); `none`/`afl` bodies stay no-ops in 0.1.
+- Strip wrapper frames from reported tracebacks and fingerprints.
+- Bound table forwarding; skip vectorized operands.
 
-## Stage 9 — `replay()`
+Complete when the magic-string fixture (`x == "zufuzz-secret"`), a `%in%`
+fixture, a `switch` fixture, and a fixed-`grepl` fixture are each solved under
+the companion with fixed `-seed`/`-runs` and none is solved by the baseline;
+an S4 `==` method fixture still dispatches correctly on every engine;
+fingerprints of instrumented and uninstrumented runs of the error fixture
+match; and the same wrappers under `afl` are measured as pure overhead with no
+semantic change.
 
-**Depends on:** Stage 8
+## Stage 10 — Sanitizer configurations and Docker image
+
+**Depends on:** Stage 6; companion E3 for the preload part
 **Status:** [ ] not started
 
-Work: fresh `Rscript harness input` with `ZUFUZZ_NO_INSTRUMENT=1`;
-structured outcome and fingerprint; environment comparison against the
-sidecar with mismatch notes; `instrument = TRUE` variant; export and document.
+Work (design §10 is the reference):
 
-Complete when a deterministic error artifact replays with the same fingerprint;
-a normal input reports `normal`; a history-dependent fixture is reported as not
-confirmed; version mismatches are reported without blocking.
-
-## Stage 10 — `minimize()`
-
-**Depends on:** Stage 9
-**Status:** [ ] not started
-
-Work: drive `-minimize_crash=1 -runs=N -exact_artifact_path=<out>` with the
-fingerprint gate; refuse unconfirmed, timeout, and truncated-fingerprint
-findings; reconfirm the output via `replay()`; report sizes and status.
-
-Complete when a reducible fixture shrinks and reconfirms; a fixture whose
-smaller variants raise a *different* error does not shrink past that point;
-the original artifact is byte-identical afterwards; `runs < 3` is rejected.
-
-## Stage 11 — Sanitizer configurations, preload, Docker image
-
-**Depends on:** Gate A
-**Status:** [ ] not started
-
-Work (design §10 is the reference for every flag and rationale here):
-
-- Build `zufuzz_preload.so` alongside `zufuzz.so` — libFuzzer plus bridge glue,
-  linked with `-fsanitize=address` when a sanitizer configuration is requested —
-  so libFuzzer's sancov definitions precede the ASan runtime's in search order.
-- `preload_path()` returns it; `fuzz_file(env =)` sets `LD_PRELOAD` for the
-  child (`DYLD_INSERT_LIBRARIES` on macOS, expected to hit SIP).
-- Document Configuration A (sanitized R build) and Configuration B (stock R
-  plus a sanitized target package) with the `ASAN_OPTIONS`/`UBSAN_OPTIONS` from
-  design §10. Test whether `use_sigaltstack=0` is still needed once the wrapper
-  sets `R_NO_SEGV_HANDLER=1`.
-- `docker/Dockerfile` on `rocker/r-devel-ubsan-clang` carrying zufuzz, the
-  preload object, and the native fixture package.
+- **Worker path first**: document and test running `afl-fuzz` over a
+  sanitized R build (`rocker/r-devel-san`, `rocker/r-devel-ubsan-clang`)
+  with the `ASAN_OPTIONS`/`UBSAN_OPTIONS` from §10 — no preload, no
+  companion. This is the recommended sanitized configuration.
+- `docker/Dockerfile` on `rocker/r-devel-ubsan-clang` carrying zufuzz, AFL++,
+  the companion and its preload object, and the native fixture package.
 - Sidecars derived from sanitizer logs: `kind`, the `SUMMARY:` line, top
-  non-R frames, exit code/signal, and the options in effect.
-- Startup check on libFuzzer's `Loaded N modules (M inline 8-bit counters)`:
-  warn when a sanitized configuration was requested but M equals the R site
-  count, meaning no native counters appeared.
+  non-R frames, exit code/signal, options in effect — on both engines.
+- Companion path: Configuration B with `preload_path()` and the startup
+  check on libFuzzer's `Loaded N modules (M inline 8-bit counters)` line;
+  test whether `use_sigaltstack=0` is still needed under `R_NO_SEGV_HANDLER=1`.
 
 Complete when, in the Docker image, a heap-overflow fixture built with
 `-fsanitize=address` yields a `crash-` artifact whose replay reproduces the
-same `SUMMARY:` line under both configurations; the same run on stock R
-without preload is reported as unsanitized rather than silently passing; a
-bare signal with no sanitizer report is recorded but not fingerprinted, and
-`minimize()` refuses it.
+same `SUMMARY:` line under the worker path and under both companion
+configurations; the same run on stock R is reported as unsanitized rather
+than silently passing; a bare signal with no sanitizer report is recorded but
+not fingerprinted, and `minimize()` refuses it.
 
-## Stage 12 — Documentation and CI smoke workflow
+## Stage 11 — Documentation, CRAN preparation, CI smoke workflow
 
-**Depends on:** Stages 7–11
+**Depends on:** Stages 7–10
 **Status:** [ ] not started
 
-Work: reference docs for every export; README with the JSON-style harness,
-the `Rscript` invocation, replay and minimize; a getting-started vignette
-covering expected rejection, instrumentation scope and its holes,
-reproducibility levels, and sanitizer setup; `_pkgdown.yml`; a
-`fuzz-smoke.yaml` workflow that runs `fuzz_file()` with fixed `-runs`/`-seed`
-on the toy harness and uploads `.zufuzz/` on failure.
+Work: reference docs for every export; README with the harness, the three
+ways to run it (`Rscript` under the companion, `afl-fuzz`, `fuzz_file()`),
+`engines()`, replay and minimize; a getting-started vignette covering expected
+rejection, instrumentation scope and its holes, reproducibility levels,
+choosing an engine, and sanitizer setup; a "Windows" section that says
+exactly what works and what needs WSL; `_pkgdown.yml`; `cran-comments.md`;
+`fuzz-smoke.yaml` running `fuzz_file()` with fixed seed and budget on the toy
+harness under AFL++ and under the companion, uploading `.zufuzz/` on failure.
+Then the CRAN checklist: `R CMD check --as-cran` on all platforms and
+R-devel, `urlchecker`, spelling, no examples or tests writing outside
+`tempdir()`, no engine required anywhere in check.
 
-Complete when `pkgdown::check_pkgdown()` passes, README and vignette run from a
-clean install, and `R CMD check` does not start a campaign.
+Complete when `pkgdown::check_pkgdown()` passes, README and vignette run from
+a clean install with no engine, `R CMD check --as-cran` has no errors,
+warnings, or NOTEs on any platform, and `R CMD check` does not start a campaign.
 
-## Stage 13 — Benchmarks
+## Stage 12 — Benchmarks
 
-**Depends on:** Stage 12
+**Depends on:** Stage 11
 **Status:** [ ] not started
 
 Work per design §14: `bench/` harnesses (empty, branch-heavy R, thin `.Call`,
-one real package); probe, provider, and bridge overhead measured separately;
-guided vs unguided with ≥ 30 predeclared seeds, equal `-runs` and equal
-`-max_total_time`; sustained-run RSS; publish configuration, raw results, and
-the analysis script.
+one real package); probe, provider, and per-execution overhead measured
+separately and per engine (in-process vs worker); guided vs unguided with
+≥ 30 predeclared seeds, equal `-runs`/`-E` and equal wall time; sustained-run
+RSS; publish configuration, raw results, and the analysis script.
 
 Complete when results reproduce from repository scripts.
 
 ## Gate C — Useful exploration
 
-**Depends on:** Stage 13
+**Depends on:** Stage 12
 **Status:** [ ] not passed
 
-Pass when guided search shows a wall-time advantage on branch-heavy R code and
-discovers meaningful coverage beyond wrapper entry in the real package
-harness. If it fails, profile probe and bridge cost before touching mutation
-or scheduling — those belong to libFuzzer.
+Pass when guided search shows a wall-time advantage on branch-heavy R code
+under at least one engine and discovers meaningful coverage beyond wrapper
+entry in the real package harness. If it fails, profile probe and protocol
+cost before touching mutation or scheduling — those belong to the engines.
 
-## Track N — Native coverage feasibility
+## Stage 13 — 0.1.0 release
 
-**Can start after:** Stage 3 · **Blocks 0.1.0:** no
-**Status:** [ ] not started
-
-Run this inside the Docker image, on a fixture package: a `.Call` wrapper over
-C code with several branches and one deliberate heap overflow behind a 4-byte
-magic prefix.
-
-1. Build the fixture with `-fsanitize=address,fuzzer-no-link`.
-2. Run under Configurations A and B with the preload; assert M exceeds the R
-   site count (design §10 — otherwise the callbacks bound to ASan's
-   definitions and there is no native feedback).
-3. Show that R-level counters stay constant while native features grow; solve
-   the magic prefix through native `trace-cmp`; confirm the overflow yields a
-   `crash-` artifact whose bytes replay to the same `SUMMARY:` line.
-4. Record toolchain requirements (Clang version, `compiler-rt` availability),
-   what happens with GCC-built targets (GCC's `-fsanitize-coverage` support is
-   partial), and whether Apple clang can be made to work.
-5. Decide: support native coverage as a documented feature in 0.2, or restrict
-   it to the Docker image.
-
-Native coverage identities come from libFuzzer's module tables; zufuzz does not
-try to make them stable across builds. Deliver reproducible commands, the
-counter-count evidence, the crash replay, the toolchain constraints, and a
-written decision for 0.2. No experimental code becomes a package dependency.
-
-## Stage 14 — 0.1.0 release candidate
-
-**Depends on:** Gate C; Stages 0–13
+**Depends on:** Gate C; Stages 0–12; companion E3
 **Status:** [ ] not started
 
 Work: review every export, condition class, result field, sidecar schema, and
-documented limitation against the implementation; freeze instrumentation and
-provider algorithm versions; run the full CI matrix, the Docker image tests,
-and the benchmarks; confirm generated data is build-ignored; set
-`Version: 0.1.0`, finalize `NEWS.md`, tag.
+documented limitation against the implementation; freeze instrumentation,
+provider, and protocol versions; run the full CI matrix, the Docker image
+tests, and the benchmarks; confirm generated data is build-ignored; set
+`Version: 0.1.0`, finalize `NEWS.md`; submit `zufuzz` to CRAN; tag
+`zufuzz.libfuzzer 0.1.0` and confirm it builds on r-universe for Linux and
+macOS.
 
-Complete when Gates A, B, C are recorded as passed, `R CMD check` has no
-errors or warnings and only the documented NOTE, and the package claims
-nothing deferred.
+Complete when Gates A, B, C are recorded as passed, `zufuzz` is accepted on
+CRAN with no NOTE, the companion installs from `Additional_repositories` on
+a clean machine, and the package claims nothing deferred.
+
+---
+
+## Companion track — `zufuzz.libfuzzer`
+
+Its own repository; depends on `zufuzz`. These are the second revision's
+Stages 0–2, Gate A, and the preload half of its Stage 11, unchanged in
+substance.
+
+### Companion E0 — Foundation with vendored libFuzzer
+
+**Depends on:** zufuzz Stage 1 (the region accessor)
+**Status:** [ ] not started
+
+Work:
+
+- `DESCRIPTION`: `Depends: zufuzz`, `Authors@R` including LLVM as `cph`,
+  `SystemRequirements: C++17`, `OS_type: unix`.
+- Vendor the libFuzzer file subset from a pinned LLVM release into
+  `src/libfuzzer/` (omit Windows, Fuchsia, `FuzzerMain.cpp`,
+  `FuzzerInterceptors.cpp`; keep `FuzzerBuiltinsMsvc.h`); `VERSION`,
+  `LICENSE.note`, `inst/COPYRIGHTS`.
+- `Makevars` with `CXX_STD = CXX17`, plus the `ZUFUZZ_LIBFUZZER_LIB` /
+  `ZUFUZZ_CLANG` override; `Makevars.win` refuses with a message.
+- **First CI job: system GCC on Ubuntu** compiles the vendored tree with
+  R's default flags and asserts `LLVMFuzzerRunDriver` and
+  `__sanitizer_cov_8bit_counters_init` are defined and `main` is absent. This
+  gates the pin. Apple clang is already measured clean.
+
+Complete when the package installs on Ubuntu (GCC) and macOS (Apple clang),
+an internal `.Call` confirms `LLVMFuzzerRunDriver` is linked, the override
+links an external archive instead, and `-pedantic` noise, if any, is
+silenced locally rather than by patching sources.
+
+### Companion E1 — Bridge: driver, artifacts, signals, unwind
+
+**Depends on:** E0
+**Status:** [ ] not started
+
+Work: the in-process `fuzz()` method — argv, the re-exec wrapper script
+(sets `R_NO_SEGV_HANDLER=1`), region registration through the accessor,
+`LLVMFuzzerRunDriver`; the callback (`RAWSXP` copy, `R_UnwindProtect`/
+`R_tryCatch`, return 0); escaped error → the shared diagnostic/sidecar code
+from zufuzz Stage 4 → `abort()`; reset `SIGSEGV`, `SIGILL`, `SIGBUS`,
+`SIGINT`, `SIGUSR1`, `SIGUSR2` to `SIG_DFL` before the driver, recording what
+was replaced.
+
+Fixtures: zufuzz Stage 6's, plus a harness that calls `quit()`.
+
+Complete when: the error fixture produces `crash-<sha1>` with the exact
+bytes, the diagnostic, and exit 77; the NULL-dereference fixture and a
+`SIGILL`/`SIGBUS` fixture (`__builtin_trap()`, misaligned access) produce
+`crash-<sha1>` with and without the wrapper's `R_NO_SEGV_HANDLER`; both hang
+fixtures produce `timeout-<sha1>` under `-timeout=2`; `SIGINT` stops the
+child cleanly; `-runs=100` exits 0 with the "no interesting inputs" warning
+visible when nothing is instrumented; `-fork=1 -ignore_crashes=1 -runs=2000`
+over the error fixture keeps going and produces multiple artifacts; `-jobs=2`
+and `-minimize_crash=1` re-exec through the wrapper. If `-fork`/`-jobs`
+cannot be made to re-exec, drop the claim rather than ship it.
+
+### Companion E2 — In-process sidecars, fingerprint gate, per-input controls
+
+**Depends on:** E1
+**Status:** [ ] not started
+
+Work: the bridge honours `ZUFUZZ_EXPECT_FINGERPRINT` (mismatch → return
+normally); `before_each`, `rng_seed`, `gc_torture` in the in-process
+callback; `coverage_out` from an `atexit` handler as an extra on top of
+zufuzz's run-once report; `-minimize_crash` acceleration wired into zufuzz's
+`minimize()`.
+
+Complete when the gate makes a two-error fixture abort only on the expected
+one; `rng_seed` and `gc_torture` behave as in zufuzz Stage 4 but in-process;
+`coverage_out` is produced on the finding and timeout exit paths, not only
+on a clean exit; the fingerprint of a finding matches between the companion,
+AFL++, and `replay()`.
+
+### Gate A — Bridge viable in R
+
+**Depends on:** E2
+**Status:** [ ] not passed
+
+Pass when every E1–E2 fixture behaves identically on Ubuntu (GCC) and macOS
+(Apple clang), with and without `LD_PRELOAD` of an ASan runtime on Linux, and
+10 000 consecutive escaped errors under `-fork=1 -ignore_crashes=1` leak no
+memory beyond libFuzzer's own reporting. If the signal or unwind strategy
+fails on a platform, that platform is dropped from the companion rather than
+worked around in user documentation — zufuzz itself is unaffected.
+
+### Companion E3 — Preload object and Configuration B
+
+**Depends on:** Gate A
+**Status:** [ ] not started
+
+Work: build `zufuzz_preload.so` (libFuzzer plus bridge glue, linked with
+`-fsanitize=address` when requested) so libFuzzer's sancov definitions
+precede the ASan runtime's; `preload_path()`; `fuzz_file(env =)` sets
+`LD_PRELOAD` for the child (`DYLD_INSERT_LIBRARIES` on macOS, expected to hit
+SIP); the startup check on `Loaded N modules (M inline 8-bit counters)`.
+
+Complete when zufuzz Stage 10's companion-path criteria pass in the Docker
+image.
+
+### Track N — Native coverage feasibility
+
+**Can start after:** E1 · **Blocks 0.1.0:** no
+**Status:** [ ] not started
+
+Unchanged from the second revision, run in the Docker image on the fixture
+package (a `.Call` wrapper with several branches and a heap overflow behind a
+4-byte magic prefix): build with `-fsanitize=address,fuzzer-no-link`; run
+under both companion configurations with the preload; assert M exceeds the R
+site count; show R counters constant while native features grow; solve the
+magic prefix through native `trace-cmp`; confirm the overflow's artifact
+replays to the same `SUMMARY:` line; record toolchain requirements (Clang
+version, `compiler-rt`, what GCC-built targets do, whether Apple clang can
+work). Use `ZUFUZZ_LIBFUZZER_LIB` to test an ABI-matched clang build against
+the vendored one. Decide: support native coverage as a documented feature in
+0.2, or restrict it to the Docker image. No experimental code becomes a
+package dependency.
+
+---
 
 ## 0.1.0 definition of done
 
 A developer can:
 
-1. Write `test_one_input` in a script, call `instrument_package()` and
-   `fuzz()`, and run it with `Rscript harness.R corpus/ -max_len=… -dict=…`.
-2. Consume structured values through `fuzzed_data_provider()`, and fuzz
+1. `install.packages("zufuzz")` from CRAN on Linux, macOS, or Windows, with
+   no other tool, and instrument a package, generate objects, replay and
+   minimize an artifact, and report coverage.
+2. Run `engines()` and see what is available, where it was found, and what
+   one command would add the rest.
+3. Write `test_one_input` in a script, call `instrument_package()` and
+   `fuzz()`, and run it with `Rscript harness.R corpus/ -max_len=… -dict=…`
+   (companion) or `afl-fuzz -i corpus -o out -- Rscript harness.R` (AFL++),
+   or `fuzz_file("harness.R")` for either — with the same harness file.
+4. Consume structured values through `fuzzed_data_provider()`, and fuzz
    functions that take R objects via `r_object()`.
-3. Draw those same objects interactively with `draw()`, keep interesting ones
+5. Draw those same objects interactively with `draw()`, keep interesting ones
    as corpus seeds with `as_seed()`, and render a crash artifact back into the
    object that caused it with `object_from()`.
-4. Get `crash-`/`timeout-`/`oom-` artifacts with sidecars for R errors,
-   native crashes, R and native hangs, and memory blow-ups.
-5. Watch libFuzzer solve prefix and magic-string checks in instrumented R code.
-6. Run the same harness under a sanitized R build or a preloaded sanitizer and
-   get native findings as artifacts.
-7. `replay()` an artifact in a fresh process and `minimize()` a confirmed
-   R-error finding without changing its fingerprint.
-8. Use `fuzz_file()` in CI and distinguish budget, finding, interrupted, and
-   infrastructure outcomes.
+6. Get `crash-`/`timeout-`/`oom-` artifacts with sidecars for R errors,
+   native crashes, R and native hangs, and memory blow-ups — with the same
+   names and sidecars on every engine.
+7. Watch the companion engine solve prefix and magic-string checks in
+   instrumented R code.
+8. Run the same harness as an `afl-fuzz` worker inside a sanitized R build,
+   with nothing preloaded, and get native findings as artifacts.
+9. `replay()` an artifact in a fresh process and `minimize()` a confirmed
+   R-error finding without changing its fingerprint, on any platform.
+10. Use `fuzz_file()` in CI and distinguish budget, finding, interrupted, and
+    infrastructure outcomes.
 
-Each is covered by deterministic automated tests.
+Each is covered by deterministic automated tests, and items 1, 2, 4, 5, 9, and
+10 run inside `R CMD check` with no engine installed.

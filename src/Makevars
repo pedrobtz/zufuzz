@@ -1,0 +1,13 @@
+# One Makevars for every platform: no Makevars.win, no configure, no C++.
+#
+# zufuzz's native layer is plain C against R's API only.  Platform
+# differences are handled by preprocessor guards in zufuzz.h (see
+# ZUFUZZ_HAVE_SHM), not by per-platform build files, so that Windows builds
+# the same sources as everywhere else and simply reports that it cannot
+# attach to a fuzzing supervisor.
+#
+# Anything needing C++, a vendored engine, or sanitizer flags belongs in the
+# zufuzz.libfuzzer companion package.  If a change here starts to look like
+# it needs CXX_STD, that is the signal it is in the wrong repository.
+
+PKG_CFLAGS =

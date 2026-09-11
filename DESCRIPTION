@@ -1,14 +1,24 @@
 Package: zufuzz
-Title: What the Package Does (One Line, Title Case)
+Title: Coverage-Guided Fuzzing for R Packages
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Authors@R:
+    person("pedrobtz", email = "pedrobtz@gmail.com", role = c("aut", "cre"))
+Description: Instruments R code so that a coverage-guided fuzzing engine can
+    search for inputs reaching new branches, and supplies the tooling around a
+    campaign: a byte-driven data provider and R object generator, a harness
+    launcher, crash artifacts with structured metadata, replay in a fresh
+    process, and fingerprint-gated test case minimization. The engine itself
+    is external and optional, so instrumentation, generation, replay,
+    minimization and coverage reporting all work with nothing else installed.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 8.0.0
-Suggests: 
+Depends:
+    R (>= 4.1)
+Suggests:
     testthat (>= 3.0.0)
+SystemRequirements: AFL++ (optional, only for engine = "afl")
+URL: https://github.com/pedrobtz/zufuzz
+BugReports: https://github.com/pedrobtz/zufuzz/issues
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0
