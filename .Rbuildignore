@@ -2,3 +2,13 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^LICENSE\.md$
+^cran-comments\.md$
+^CLAUDE\.md$
+^\.agents$
+^\.zufuzz$
+^fuzz$
+^bench$
+^docker$
+^\.vscode$
+^\.claude$

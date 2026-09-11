@@ -44,7 +44,18 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      # No fuzzing engine is installed on any of these runners, and that is
+      # deliberate: it is the configuration CRAN checks in, and the package
+      # must install, load and pass with nothing else present. Engine
+      # dependent tests skip themselves via engine_available().
+      #
+      # error-on "note" enforces the Stage 0 gate: zero NOTEs, in particular
+      # no "compiled code calls exit/abort/..." NOTE. That NOTE appearing
+      # means engine code has leaked into this package and belongs in the
+      # zufuzz.libfuzzer companion instead.
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"note"'
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
