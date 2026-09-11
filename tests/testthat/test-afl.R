@@ -74,6 +74,12 @@ test_that("a campaign without a corpus is infrastructure, not a crash", {
 })
 
 test_that("AFL findings are imported under zufuzz names, leaving AFL's alone", {
+  # AFL names its findings with colons (`id:000000,sig:06`), which Windows
+  # forbids in a filename, so the fixture cannot even be created there. AFL
+  # does not run on Windows either, so this path is unreachable rather than
+  # untested.
+  skip_on_os("windows")
+
   out_dir <- tempfile("afl-out-")
   artifacts <- tempfile("zufuzz-art-")
   dir.create(file.path(out_dir, "default", "crashes"), recursive = TRUE)
@@ -110,6 +116,12 @@ test_that("AFL findings are imported under zufuzz names, leaving AFL's alone", {
 })
 
 test_that("parallel-instance output directories are imported too", {
+  # AFL names its findings with colons (`id:000000,sig:06`), which Windows
+  # forbids in a filename, so the fixture cannot even be created there. AFL
+  # does not run on Windows either, so this path is unreachable rather than
+  # untested.
+  skip_on_os("windows")
+
   out_dir <- tempfile("afl-out-")
   artifacts <- tempfile("zufuzz-art-")
   # -M/-S runs put findings under <out>/<instance>/ rather than <out>/default/.
