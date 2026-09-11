@@ -54,9 +54,10 @@ running a campaign still works.
 
 ## Commands
 
-R 4.6.1, devtools 2.5.2, roxygen2 8.0.0, testthat 3e, air 0.7.0 are installed.
-No fuzzing engine is installed here; that is the configuration CI judges, so
-develop in it.
+R 4.6.1, devtools 2.5.2, roxygen2 8.1.0, testthat 3e are installed. **`air` is
+not** — the working rule below still applies, but the formatter has to be
+installed before it can be run. No fuzzing engine is installed here either;
+that is the configuration CI judges, so develop in it.
 
 ```sh
 Rscript -e 'devtools::load_all()'            # load, compiling src/
