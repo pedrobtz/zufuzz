@@ -2,9 +2,13 @@
 
 S3method(print,zufuzz_instrumentation_report)
 S3method(print,zufuzz_plan)
+S3method(print,zufuzz_replay)
+S3method(print,zufuzz_run)
+export(fuzz)
 export(instrument)
 export(instrument_all)
 export(instrument_package)
 export(instrumentation_report)
+export(replay)
 export(uninstrument)
 useDynLib(zufuzz, .registration = TRUE, .fixes = "C_")

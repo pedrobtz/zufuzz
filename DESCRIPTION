@@ -17,6 +17,8 @@ Depends:
     R (>= 4.1)
 Imports:
     digest,
+    jsonlite,
+    processx,
     utils
 Suggests:
     testthat (>= 3.0.0)

@@ -87,7 +87,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 1 — Counter region and sink modes
 - [x] Stage 2 — Instrumentation planning
 - [x] Stage 3 — Transformation, binding replacement, `coverage_out`
-- [ ] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
+- [x] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [ ] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 - [ ] Stage 6 — AFL++ worker protocol
 - [ ] Stage 7 — `minimize()`
@@ -308,7 +308,7 @@ Found by building it, and worth not rediscovering:
 ## Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 
 **Depends on:** Stage 3
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work:
 
@@ -335,6 +335,36 @@ crashes under `gc_torture = TRUE` and not without it (subprocess test); a
 deterministic error artifact replays with the same fingerprint; a normal input
 reports `normal`; a history-dependent fixture is reported as not confirmed;
 all of it on Windows too.
+
+Settled, and one criterion deliberately deferred:
+
+- **A fingerprint must not depend on the input.** The originating call usually
+  carries the offending value, so keeping it verbatim would make every input
+  its own finding and nothing would ever match anything -- no confirmation, no
+  gated minimization. The call is normalised to `function/arity`
+  (`parse(text = x)` becomes `parse/1`). It does still distinguish the same
+  `stop()` raised from different functions, which is correct and caught a test
+  of mine that assumed otherwise.
+- **A traceback starts at the target.** `sys.calls()` in the handler returns
+  the whole stack, so twenty frames of testthat or an IDE would bury the one
+  frame that matters. `invoke_target()` records the stack depth on entry and
+  drops everything above it.
+- **`processx` arrives here, not at Stage 5.** `replay()` needs a genuinely
+  fresh process; that is its first use.
+- **`ZUFUZZ_ARTIFACT_DIR`** lets a parent process decide where a harness
+  writes its findings, without the harness script knowing. `replay()` uses it
+  to read the child's sidecar rather than parsing the child's stderr -- a
+  harness may print anything, but a sidecar has a schema.
+- **Subprocess tests need an installed zufuzz.** They skip under
+  `devtools::test()` (pkgload's copy is invisible to a child) and run under
+  `R CMD check`, which is what CI gates on. A local `devtools::check()` is
+  therefore the only way to exercise them.
+- **Deferred: the PROTECT-bug fixture.** Proving `gc_torture = TRUE` makes a
+  missing `PROTECT` crash needs deliberately memory-unsafe native code, which
+  must not ship in the CRAN package. What zufuzz owns -- enabling torture
+  around the call and restoring it afterwards, including on error -- is tested
+  here; the crash itself moves to Stage 10, where the Docker image already
+  carries native fixtures that misbehave on purpose.
 
 ## Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 
