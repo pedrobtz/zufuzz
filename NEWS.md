@@ -1,5 +1,9 @@
 # zufuzz 0.0.0.9000
 
+* `fuzz()` run-once mode, crash artifacts with JSON sidecars, error
+  fingerprints, and `replay()` (roadmap Stage 4). Run-once needs no engine,
+  returns rather than terminating, and works on every platform — it is what
+  `replay()` and coverage reporting are built on.
 * `instrument()`, `instrument_package()`, `instrument_all()`,
   `instrumentation_report()` and `uninstrument()` (roadmap Stage 3) — the
   first user-facing functions. Rewrites a closure's body so reaching a branch

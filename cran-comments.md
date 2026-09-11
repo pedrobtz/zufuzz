@@ -26,6 +26,10 @@ We considered routing the call through `get("unlockBinding", baseenv())` to
 avoid the note and decided against it: the note exists to tell you the package
 does binding surgery, and it does.
 
+The other note is `checking CRAN incoming feasibility`, reporting a new
+submission and that `0.0.0.9000` "contains large components". That is the
+development version; a release will carry a normal three-component version.
+
 ## Notes for the reviewer
 
 zufuzz drives external fuzzing engines. The package itself contains no
