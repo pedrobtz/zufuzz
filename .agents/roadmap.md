@@ -458,6 +458,16 @@ Scope and verification, decided here:
   Without `__AFL_SHM_ID` the handshake fails on its first write and the
   harness would return having done nothing -- a harness that appears to work
   and tests nothing.
+- **The campaign test must not depend on the fuzzer getting lucky.** The
+  first version seeded `"aa"` and asked AFL to find a nested `"zf"` prefix in
+  45 seconds. It passed once and failed once -- a stochastic test, which the
+  working rules above forbid, because a red build then means nothing. AFL++
+  also skips its deterministic mutation stage by default, so "reachable by a
+  byte increment" is not the guarantee it appears to be. The test now seeds
+  one byte from the crash with AFL's RNG fixed, and asserts what it is
+  actually for: the worker speaks the protocol, a crash is detected as a
+  crash, and the artifact is imported with a sidecar. Whether guided search
+  beats unguided is Gate C's question, measured over many seeds in Stage 12.
 - **This stage cannot be verified on a developer machine without AFL++.** The
   tests split: command-line construction, flag mapping, artifact import,
   attach failure and handshake refusal run everywhere; the campaign tests are

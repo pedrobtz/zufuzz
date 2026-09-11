@@ -219,18 +219,29 @@ test_that("a campaign finds the planted error and imports it", {
   skip_without_afl()
   skip_if(is.na(installed_zufuzz_lib()), "zufuzz is not installed")
 
+  # Seeded one byte from the crash, with AFL's RNG fixed by `seed`.
+  #
+  # The first version of this test seeded "aa" and asked the campaign to find
+  # the nested "zf" prefix in 45 seconds. It passed once and failed once --
+  # a stochastic test, which the roadmap's own working rules forbid, because
+  # a red build then means nothing. AFL++ also skips its deterministic
+  # mutation stage by default, so "reachable by a byte increment" is not the
+  # guarantee it looks like.
+  #
+  # What this test is *for* is the protocol: worker speaks it, crash is
+  # detected as a crash, artifact is imported with a sidecar. Whether guided
+  # search beats unguided is Gate C's question, measured over many seeds in
+  # Stage 12, not asserted by one CI run.
   result <- fuzz_file(
     test_path("fixtures", "harness-afl.R"),
-    corpus = corpus_with(charToRaw("aa")),
+    corpus = corpus_with(charToRaw("za"), charToRaw("zb")),
     engine = "afl",
-    time_limit = 45,
+    time_limit = 60,
+    seed = 1,
     quiet = TRUE
   )
 
   expect_identical(result$engine, "afl")
-  # Guided search has to get from "aa" to the nested "zf" prefix. Instrumented
-  # coverage is what makes that reachable in a short budget; unguided it is
-  # one in 65536 per byte pair.
   expect_identical(result$stop_reason, "finding")
   expect_true(length(result$findings) >= 1L)
   expect_true(file.exists(result$finding$artifact))
