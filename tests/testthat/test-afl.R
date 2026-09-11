@@ -158,6 +158,24 @@ test_that("the fork server declines when nobody is listening", {
   expect_false(isTRUE(.Call(C_zufuzz_afl_forkserver)))
 })
 
+test_that("asking for run-once under a supervisor warns", {
+  old <- Sys.getenv("__AFL_SHM_ID", unset = NA)
+  Sys.setenv(`__AFL_SHM_ID` = "12345")
+  on.exit(
+    if (is.na(old)) Sys.unsetenv("__AFL_SHM_ID") else Sys.setenv(`__AFL_SHM_ID` = old),
+    add = TRUE
+  )
+  # The trap this catches: a harness that hardcodes engine = "none" runs its
+  # inputs once and exits, so afl-fuzz sees a target that never speaks the
+  # protocol. Silence here means a campaign that looks like it started and
+  # tested nothing.
+  expect_warning(
+    fuzz(function(d) NULL, args = character(), engine = "none", quiet = TRUE,
+         artifact_dir = tempfile()),
+    "supervisor"
+  )
+})
+
 test_that("the same harness runs without a supervisor", {
   skip_if(
     is.na(installed_zufuzz_lib()),
@@ -201,8 +219,11 @@ test_that("a campaign over a target that cannot fail exhausts its budget", {
   skip_without_afl()
   skip_if(is.na(installed_zufuzz_lib()), "zufuzz is not installed")
 
+  # Note the fixture: engine = "auto", not "none". A harness that hardcodes
+  # run-once exits without speaking the protocol, and AFL rightly calls that a
+  # broken target -- which zufuzz reports as `infrastructure`.
   result <- fuzz_file(
-    test_path("fixtures", "harness-ok.R"),
+    test_path("fixtures", "harness-afl-ok.R"),
     corpus = corpus_with(charToRaw("aa")),
     engine = "afl",
     time_limit = 20,

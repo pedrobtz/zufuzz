@@ -120,6 +120,19 @@ fuzz <- function(test_one_input,
     }
   }
 
+  if (identical(resolved, "none") && nzchar(Sys.getenv("__AFL_SHM_ID"))) {
+    # A supervisor is attached but this harness asked for run-once. It will
+    # read its inputs, exit, and never speak the protocol -- which afl-fuzz
+    # reports as a broken target. Worth saying out loud: the alternative is a
+    # campaign that looks like it started and tested nothing.
+    warning(
+      "zufuzz: a fuzzing supervisor is attached, but this harness asked for ",
+      "engine = \"none\"; it will run its inputs once and exit. Use ",
+      "engine = \"auto\" for a harness that should work both ways.",
+      call. = FALSE
+    )
+  }
+
   state$in_fuzz <- TRUE
   on.exit(state$in_fuzz <- FALSE, add = TRUE)
 
