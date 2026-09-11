@@ -16,6 +16,7 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 4.1)
 Imports:
+    codetools,
     digest,
     jsonlite,
     processx,
