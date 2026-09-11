@@ -90,7 +90,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [x] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 - [~] Stage 6 — AFL++ worker protocol (CI-verified only)
-- [ ] Stage 7 — `minimize()`
+- [x] Stage 7 — `minimize()`
 - [ ] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
 - [ ] Gate B — Trustworthy R feedback
 - [ ] Stage 9 — Comparison tracing (companion engine)
@@ -478,7 +478,7 @@ Scope and verification, decided here:
 ## Stage 7 — `minimize()`
 
 **Depends on:** Stage 6
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work: the gated R-side reducer (delta debugging over bytes, each candidate
 confirmed by `replay()` with `ZUFUZZ_EXPECT_FINGERPRINT`); refuse unconfirmed,
@@ -492,6 +492,24 @@ Windows; a fixture whose smaller variants raise a *different* error does not
 shrink past that point; the original artifact is byte-identical afterwards;
 `runs < 3` is rejected; the accelerated path yields a result the gated
 reducer accepts unchanged.
+
+Settled here:
+
+- **The accelerator runs *under* the gate, not beside it.** `afl-tmin` only
+  knows "did the child die", so left alone it will walk from the bug being
+  minimized into a smaller different one and report success.
+  `ZUFUZZ_EXPECT_FINGERPRINT` makes the child treat any other error as a
+  normal run, and whatever `afl-tmin` produces is then re-checked and
+  finished by the R reducer. A wrong answer from the accelerator costs time,
+  never correctness.
+- **`runs` is a process budget, not an iteration count.** Every candidate is
+  a fresh `Rscript`, so the budget is the only real cost control; it is
+  decremented by the confirmation and reconfirmation runs too, because those
+  are processes as well.
+- **Refusals are results, not errors.** No sidecar, no fingerprint, a
+  timeout, or a finding that no longer reproduces each come back as a
+  `zufuzz_minimize` carrying the reason. Minimizing any of them would produce
+  a confident answer about nothing.
 
 ## Stage 8 — FuzzedDataProvider and R object generation
 

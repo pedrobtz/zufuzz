@@ -1,5 +1,9 @@
 # zufuzz 0.0.0.9000
 
+* `minimize()` (roadmap Stage 7): shrinks a finding by delta debugging, with
+  every candidate confirmed against the original fingerprint, so it stops
+  rather than shrink into a different bug. Works with no engine installed and
+  on Windows; `afl-tmin` is used as an accelerator when available.
 * AFL++ support (roadmap Stage 6): `fuzz(engine = "afl")` runs a harness as a
   deferred fork server under an `afl-fuzz` supervisor, and
   `fuzz_file(engine = "afl")` drives a campaign and imports its findings under
