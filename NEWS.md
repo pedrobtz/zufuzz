@@ -1,5 +1,10 @@
 # zufuzz 0.0.0.9000
 
+* `fuzz_file()`, `fuzz_function()`, `engines()` and `engine_available()`
+  (roadmap Stage 5). `fuzz_file()` runs a harness in its own process and
+  classifies the outcome from the artifact directory, with the exit code only
+  corroborating — engines disagree about exit codes, but all of them write an
+  artifact when they find something.
 * `fuzz()` run-once mode, crash artifacts with JSON sidecars, error
   fingerprints, and `replay()` (roadmap Stage 4). Run-once needs no engine,
   returns rather than terminating, and works on every platform — it is what

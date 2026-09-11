@@ -88,7 +88,7 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 2 — Instrumentation planning
 - [x] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [x] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
-- [ ] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
+- [x] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 - [ ] Stage 6 — AFL++ worker protocol
 - [ ] Stage 7 — `minimize()`
 - [ ] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
@@ -369,7 +369,7 @@ Settled, and one criterion deliberately deferred:
 ## Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
 
 **Depends on:** Stage 4
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work:
 
