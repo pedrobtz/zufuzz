@@ -541,7 +541,42 @@ surface works with no engine installed and on Windows.
 ## Gate B — Trustworthy R feedback
 
 **Depends on:** Stages 6, 8; companion E1
-**Status:** [ ] not passed
+**Status:** [~] partly passed — the three-package criterion is met; the
+engine-dependent half waits on the companion package
+
+Evidence so far, from `bench/gate-b-packages.R` (one package per process, on
+macOS, R 4.6.1):
+
+| package | style | functions | sites | topics | unstable | mismatches |
+| --- | --- | --- | --- | --- | --- | --- |
+| digest | thin `.Call` wrapper | 86 | 547 | 7 | 0 | **0** |
+| withr | closure-heavy, pure R | 140 | 1004 | 28 | 3 | **0** |
+| glue | native + NSE | 54 | 363 | 10 | 0 | **0** |
+| vctrs | S3-heavy, 366 methods | 1415 | 5630 | 99 | 1 | **0** |
+
+Zero behavioural differences across 1695 instrumented functions and 7544
+sites, over 144 documented examples of code written by people who had never
+heard of zufuzz. The unit tests prove each transformation rule on fixtures
+built to exercise it; this proves the whole thing on real code.
+
+Two things about the method, both learned by getting them wrong first:
+
+- **The control arm is not optional.** Without it, four topics looked like
+  instrumentation had changed the package -- `with_tempfile`, `with_libpaths`,
+  `with_timezone` and one in vctrs. All four print a path, a timezone or a
+  temporary file name and differ between two *identical* uninstrumented runs.
+  The script now runs the examples twice before instrumenting and compares
+  only the topics that were reproducible to begin with. Reporting those four
+  as breakage would have been a false and expensive claim.
+- **The timings in that script do not measure probe overhead**, and must not
+  be quoted as if they did. The first run pays JIT compilation and lazy
+  loading, so the instrumented run often looks *faster*. Gate B's overhead
+  criterion belongs to Stage 12, with repetition and a warm baseline.
+
+Still outstanding for a full pass: all Stage 2-6 tests under **both** engines,
+the nested-prefix fixture solved by each with a fixed seed and budget and by
+neither unguided baseline, and published probe overhead. All three need the
+companion engine package, which does not exist yet.
 
 Pass when all Stage 2–6 tests pass on Linux and macOS under **both** engines
 (AFL++ on the Ubuntu job; the companion on Ubuntu and macOS); the
