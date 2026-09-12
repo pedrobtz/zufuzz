@@ -186,3 +186,33 @@ test_that("the report records the JIT level", {
   # between two otherwise identical campaigns.
   expect_true(is.na(state$jit) || is.numeric(state$jit))
 })
+
+test_that("the report does not invent regions it did not skip", {
+  on.exit(clean_slate(), add = TRUE)
+
+  clean <- function(x) {
+    if (x > 0) "positive" else "negative"
+  }
+  instrument("clean")
+
+  report <- instrumentation_report()
+  expect_identical(nrow(report$skips), 0L)
+  # The printed form is what a user reads, so assert on that too.
+  expect_false(any(grepl(
+    "region\\(s\\) not instrumented",
+    capture.output(print(report))
+  )))
+})
+
+test_that("a selection with nothing instrumentable reports, and does not error", {
+  on.exit(clean_slate(), add = TRUE)
+
+  # Asking for a primitive is an easy mistake, and it used to fail with
+  # order(NULL)'s "argument 1 is not a vector" -- a message that says nothing
+  # about primitives and sends the reader into zufuzz's internals.
+  expect_no_error(instrument("base::sum"))
+  report <- instrumentation_report()
+  expect_identical(report$n_functions, 0L)
+  expect_identical(report$n_sites, 0L)
+  expect_output(print(report), "nothing is instrumented")
+})

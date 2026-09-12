@@ -312,3 +312,33 @@ test_that("a plan prints its shape", {
   f <- function(x) if (x) 1 else 2
   expect_output(print(plan_selections(list(new_selection("f", f)))), "zufuzz plan")
 })
+
+# Regression: rbind() with every part NULL does not return NULL. Passing
+# `make.row.names = FALSE` alongside nothing else makes it
+# `rbind(make.row.names = FALSE)` -- a 1x1 matrix named after the argument --
+# so instrumentation_report() claimed "1 region(s) not instrumented" for a
+# function with nothing skipped. A report that overstates what it missed is
+# worse than no report: it sends people looking for coverage that was never
+# lost.
+test_that("a plan with nothing skipped reports nothing skipped", {
+  clean <- function(x) {
+    if (x > 0) "positive" else "negative"
+  }
+  plan <- plan_selections(list(new_selection("clean", clean)))
+
+  skips <- plan_skips(plan)
+  expect_true(is.data.frame(skips))
+  expect_identical(nrow(skips), 0L)
+  expect_identical(names(skips), c("function", "reason", "path"))
+  expect_false("make.row.names" %in% rownames(skips))
+
+  sites <- plan_sites(plan)
+  expect_true(is.data.frame(sites))
+  expect_identical(nrow(sites), 4L)
+})
+
+test_that("an empty plan yields empty frames, not stray rows", {
+  empty <- new_plan(list())
+  expect_identical(nrow(plan_sites(empty)), 0L)
+  expect_identical(nrow(plan_skips(empty)), 0L)
+})
