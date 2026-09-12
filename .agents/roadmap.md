@@ -89,9 +89,9 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 3 — Transformation, binding replacement, `coverage_out`
 - [x] Stage 4 — `fuzz()` run-once mode, sidecars, fingerprints, `replay()`
 - [x] Stage 5 — Launcher, `engines()`, `zufuzz_result`, `fuzz_function()`
-- [~] Stage 6 — AFL++ worker protocol (CI-verified only)
+- [x] Stage 6 — AFL++ worker protocol
 - [x] Stage 7 — `minimize()`
-- [ ] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
+- [x] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
 - [ ] Gate B — Trustworthy R feedback
 - [ ] Stage 9 — Comparison tracing (companion engine)
 - [ ] Stage 10 — Sanitizer configurations and Docker image
@@ -403,7 +403,7 @@ missing object; `expect = "error"` is rejected up front.
 ## Stage 6 — AFL++ worker protocol
 
 **Depends on:** Stage 5
-**Status:** [~] implemented; the protocol is verified only by the afl-engine CI job
+**Status:** [x] done — verified green by the afl-engine CI job
 
 Modelled on python-afl's `afl.pyx` (235 lines) and its 22-line launcher.
 
@@ -514,7 +514,7 @@ Settled here:
 ## Stage 8 — FuzzedDataProvider and R object generation
 
 **Depends on:** Stage 0 · **parallel** with Stages 1–7
-**Status:** [ ] not started
+**Status:** [x] done
 
 Work: `src/fdp.c` cursor and every method from design §11; `R/fdp.R` object;
 written consumption spec in the roxygen docs; property tests that consumed
