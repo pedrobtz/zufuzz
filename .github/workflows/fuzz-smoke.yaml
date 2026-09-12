@@ -1,0 +1,61 @@
+# A campaign that actually runs, on every push, with a fixed seed and a small
+# budget.
+#
+# Separate from R-CMD-check on purpose: `R CMD check` must never start a
+# campaign, so the thing that proves campaigns still work has to live
+# somewhere else.
+on:
+  push:
+    branches: [main, master, inital-version]
+  pull_request:
+  workflow_dispatch:
+
+name: fuzz-smoke.yaml
+
+permissions: read-all
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    name: fuzz smoke (afl++)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      AFL_SKIP_CPUFREQ: 1
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          needs: check
+
+      - name: Install AFL++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y afl++
+
+      - name: Let AFL see child crashes
+        # AFL detects a crash from how the child died. If core_pattern pipes
+        # cores to a handler, the signal is consumed before AFL sees it and
+        # every finding is silently lost.
+        run: echo core | sudo tee /proc/sys/kernel/core_pattern
+
+      - name: Install zufuzz
+        run: R CMD INSTALL --no-docs .
+
+      - name: Run a bounded campaign
+        run: Rscript inst/smoke/run-smoke.R
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zufuzz-smoke-artifacts
+          path: |
+            .zufuzz/
+          if-no-files-found: ignore

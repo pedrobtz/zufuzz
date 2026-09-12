@@ -66,7 +66,8 @@ zufuzz (CRAN)                                   zufuzz.libfuzzer (r-universe)
 `instrument_package()`, `instrument_all()`, `instrumentation_report()`,
 `coverage_out`, `fuzzed_data_provider()`, `r_object()`, `draw()`,
 `as_seed()`, `object_from()`, `engines()`, `engine_available()`,
-`fuzz_file()`, `fuzz_function()`, `replay()`, `minimize()`; R coverage
+`fuzz_file()`, `fuzz_function()`, `replay()`, `minimize()`,
+`uninstrument()`; R coverage
 feedback on two engines; the AFL++ child protocol; crash/timeout/oom
 artifacts with JSON sidecars on every engine; documented sanitizer
 configurations and a Docker image; a CI smoke workflow; benchmarks; a clean
@@ -640,7 +641,8 @@ not fingerprinted, and `minimize()` refuses it.
 ## Stage 11 — Documentation, CRAN preparation, CI smoke workflow
 
 **Depends on:** Stages 7–10
-**Status:** [ ] not started
+**Status:** [~] docs, vignette, pkgdown and the smoke workflow done; the CRAN
+checklist waits on a real `Authors@R` and on Stages 9–10
 
 Work: reference docs for every export; README with the harness, the three
 ways to run it (`Rscript` under the companion, `afl-fuzz`, `fuzz_file()`),
@@ -658,10 +660,68 @@ Complete when `pkgdown::check_pkgdown()` passes, README and vignette run from
 a clean install with no engine, `R CMD check --as-cran` has no errors,
 warnings, or NOTEs on any platform, and `R CMD check` does not start a campaign.
 
+**Amended: "no NOTEs" is not achievable, and pretending otherwise would mean
+hiding things from a reviewer.** Two remain and both are correct:
+
+- `unlockBinding` in `R/instrument.R`. Replacing a binding in a locked
+  namespace is what an instrumentation package does; covr and mockery carry
+  the same note. Routing it through `get("unlockBinding", baseenv())` would
+  make it vanish, but that note exists to tell a reviewer the package does
+  binding surgery, and it does.
+- `checking CRAN incoming feasibility`, reporting a new submission, the
+  development version number, and the pkgdown URL 404ing because the site is
+  not published yet. All three resolve at release.
+
+Both are explained in `cran-comments.md`. The criterion is therefore "no
+errors, no warnings, and only notes that are documented and justified".
+
+The campaign that `R CMD check` must never start lives in
+`.github/workflows/fuzz-smoke.yaml` instead: a bounded, seeded run over
+`inst/smoke/harness.R` under AFL++, which fails loudly if the campaign never
+started rather than passing quietly -- the failure mode that otherwise looks
+exactly like a clean run.
+
 ## Stage 12 — Benchmarks
 
 **Depends on:** Stage 11
-**Status:** [ ] not started
+**Status:** [~] overhead measured; guided-vs-unguided waits on the companion
+
+Overhead, from `bench/overhead.R` (macOS, R 4.5.2, x86_64, 15 repetitions,
+median):
+
+| measurement | plain | instrumented | ratio | per unit |
+| --- | --- | --- | --- | --- |
+| probe, branch-heavy | 0.079 s | 0.308 s | **3.90x** | ~254 ns per probe execution |
+| provider | — | 0.341 s | — | ~17 µs per input |
+| object generation | — | 0.441 s | — | ~220 µs per object |
+
+This is the probe overhead Gate B asks to be measured and published. 3.9x is
+the **worst case**: branch-heavy code where nearly every statement is a probe
+site, and the probe is a `.Call` per branch. Straight-line code pays
+proportionally less, and any target doing real work per input pays less again.
+Published as it is rather than tuned, because the roadmap asks for it measured
+and "not necessarily small".
+
+Three things the script gets right that a naive timing does not, each because
+an earlier version got it wrong:
+
+- **Warm up before timing.** R's JIT compiles a closure after a few calls, so
+  a cold instrumented run against a warm plain one measures the JIT. That is
+  exactly how `bench/gate-b-packages.R` came to show instrumented code as
+  *faster*, and why its timings must not be quoted as overhead.
+- **Clear the clock.** `proc.time()` resolves to about a millisecond; the
+  first version timed 5 ms workloads and reported confident numbers derived
+  from noise. Workloads are now sized so every reported measurement is
+  hundreds of milliseconds, and anything still too fast prints "too fast to
+  time reliably" instead of a number.
+- **A ratio only where both sides do the same work.** The provider row
+  compares "build a provider and consume two values" against "slice a vector".
+  Printing 12x there invited precisely the wrong conclusion, so non-comparable
+  rows report absolute cost only.
+
+Still outstanding: guided vs unguided over >= 30 predeclared seeds at equal
+budget, per-engine execution overhead (in-process vs worker), and sustained-run
+RSS. All need the companion engine package.
 
 Work per design §14: `bench/` harnesses (empty, branch-heavy R, thin `.Call`,
 one real package); probe, provider, and per-execution overhead measured

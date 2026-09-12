@@ -1146,8 +1146,12 @@ Long campaigns never run as examples or in `R CMD check`.
   CRAN's check machines have no engine and the package must not care.
 - Tests write only under `tempdir()`; the `.zufuzz/` directory is created
   only by `fuzz_file()` and `fuzz()`, never by a test or example.
-- Minimum R 4.1. Imports: `processx` (launcher), `jsonlite` (sidecars),
-  `digest` (SHA-1 artifact names). No `callr`.
+- Minimum R 4.1. Imports, each added by the stage that first needed it:
+  `digest` (the manifest digest, then SHA-1 artifact names), `jsonlite`
+  (sidecars), `processx` (`replay()` and the launcher), `codetools`
+  (detecting globals a serialized closure would lose), `tools`
+  (`pskill()`, so a worker signals its own crash from R rather than from
+  compiled code), `utils`. No `callr`.
 - Windows is a supported *installation* platform with a documented
   limitation (no campaign engine; `engines()` says so and points at WSL),
   not an `OS_type: unix` exclusion.

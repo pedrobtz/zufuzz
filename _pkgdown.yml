@@ -1,4 +1,58 @@
-url: ~
+url: https://pedrobtz.github.io/zufuzz/
+
 template:
   bootstrap: 5
 
+reference:
+  - title: Running a campaign
+    desc: >
+      The harness entry point and the ways to drive it. `fuzz()` is what a
+      harness script calls; `fuzz_file()` runs one in a child process so a
+      finding does not end your session.
+    contents:
+      - fuzz
+      - fuzz_file
+      - fuzz_function
+
+  - title: Instrumentation
+    desc: >
+      Rewriting R code so that reaching a branch is visible to an engine.
+      `instrumentation_report()` is where to look when coverage seems thin:
+      it lists what was replaced and what the transformer declined to enter.
+    contents:
+      - instrument
+      - instrumentation_report
+      - uninstrument
+
+  - title: Structured input
+    desc: >
+      Turning fuzzed bytes into typed values and whole R objects. An object is
+      a pure function of its bytes, which is what lets an engine edit its
+      structure and lets you reproduce one exactly.
+    contents:
+      - fuzzed_data_provider
+      - r_object
+      - draw
+      - as_seed
+      - object_from
+
+  - title: Reproducing a finding
+    desc: >
+      Confirming a finding in a fresh, uninstrumented process, and shrinking it
+      without changing which bug it is.
+    contents:
+      - replay
+      - minimize
+
+  - title: Engines
+    desc: >
+      zufuzz contains no engine. These report which are installed and what
+      would install the rest.
+    contents:
+      - engines
+
+articles:
+  - title: Getting started
+    navbar: ~
+    contents:
+      - zufuzz
