@@ -1,0 +1,81 @@
+# Proves the sanitized worker path end to end, on the platform that supports
+# it.
+#
+# tests/testthat/test-sanitizer.R parses captured logs: it proves zufuzz reads
+# what a sanitizer writes. It cannot prove the other half -- that a real
+# sanitized R process, run under the documented options, produces a log in the
+# shape the parser expects. Nothing in the unit suite would notice if a future
+# clang changed the SUMMARY grammar, or if abort_on_error stopped producing
+# SIGABRT. This job would.
+#
+# Linux only, deliberately. A package built with -fsanitize=address and loaded
+# into a stock R arrives by dlopen, which is too late for ASan's interceptors,
+# so the runtime has to be preloaded. On macOS that means
+# DYLD_INSERT_LIBRARIES, which System Integrity Protection strips before it
+# reaches the R that `R CMD INSTALL` spawns -- verified by trying it. Design
+# section 10 names Linux as the supported platform for this configuration for
+# exactly that reason.
+
+on:
+  push:
+    branches: [main, master, inital-version]
+  pull_request:
+  workflow_dispatch:
+
+name: sanitizer
+
+permissions: read-all
+
+jobs:
+  sanitized-worker-path:
+    runs-on: ubuntu-latest
+    name: sanitized worker path (ASan)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgload, any::processx
+          needs: check
+
+      # The runner's gcc does not ship the ASan runtime by default. Without
+      # it the script falls through to clang's compiler-rt, where an
+      # unfiltered glob once picked the i386 build on an x86_64 machine --
+      # ld.so refused it, carried on without it, and the "sanitized" build
+      # was not one.
+      - name: Install the ASan runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasan8 || sudo apt-get install -y libasan6
+
+      - name: Show what is available
+        run: |
+          gcc --version | head -1
+          echo "gcc libasan : $(gcc -print-file-name=libasan.so)"
+          echo "arch        : $(uname -m)"
+
+      - name: Verify the sanitized worker path
+        # Strict: with no runtime the script would otherwise skip and exit 0,
+        # and this job would be a green tick that proved nothing.
+        env:
+          ZUFUZZ_REQUIRE_SANITIZER: 1
+        run: Rscript docker/verify-sanitizer-path.R
+
+      # The captured report is the only real glibc-shaped ASan output this
+      # project sees; fixtures are supposed to be captured, not imagined.
+      - name: Keep the captured report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-report-captured
+          path: docker/asan-report-captured.log
+          if-no-files-found: warn

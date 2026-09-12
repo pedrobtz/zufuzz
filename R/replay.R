@@ -106,12 +106,28 @@ classify_replay <- function(run, out_dir) {
     ))
   }
   # A non-zero status with no sidecar means the process died before it could
-  # write one: a native crash, or the harness itself failing to load.
+  # write one: a native crash, or the harness itself failing to load. No R
+  # code ran afterwards, so there is no condition to fingerprint and whatever
+  # can be recovered has to come out of the log.
   if (!identical(run$status, 0L)) {
-    kind <- if (grepl("SUMMARY: .*Sanitizer", run$stderr)) "sanitizer" else "signal"
+    native <- native_finding(run$stderr, run$status)
+    if (is.null(native)) {
+      # Exited non-zero, no report, no signal: the harness failed to load or
+      # refused its input. Calling that a crash would invent a finding.
+      return(list(
+        outcome = "infrastructure", fingerprint = NULL,
+        status = run$status, stderr = run$stderr
+      ))
+    }
+    fp <- fingerprint_sanitizer(native)
     return(list(
-      outcome = kind, fingerprint = NULL,
-      status = run$status, stderr = run$stderr
+      # A described defect and a bare death are different claims, and only the
+      # first can be confirmed against a recorded fingerprint.
+      outcome = if (identical(native$kind, "signal")) "signal" else "sanitizer",
+      fingerprint = if (is.null(fp)) NULL else fp$digest,
+      native = native,
+      status = run$status,
+      stderr = run$stderr
     ))
   }
   list(outcome = "normal", fingerprint = NULL, status = 0L, stderr = run$stderr)

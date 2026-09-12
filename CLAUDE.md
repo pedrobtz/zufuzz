@@ -11,13 +11,14 @@ those two, **the engine is not in this package**. This repository is the CRAN
 package: engine-neutral, no C++, no vendored engine, and no compiled code that
 can terminate R. Engines attach from outside through two seams.
 
-It is currently **eleven of fourteen stages complete and merged**, with a
+It is currently **eleven and a half of fourteen stages complete and merged**
+(Stage 10's worker path landed; its preload half is blocked), with a
 working tool: it instruments R code, runs campaigns under AFL++ or run-once
 anywhere, writes crash artifacts with JSON sidecars, replays and minimizes
 findings, generates structured R objects deterministically, and proves the
 whole pipeline on every push with a real bounded campaign in CI
-(`.github/workflows/fuzz-smoke.yaml`). ~7690 tests; `R CMD check --as-cran`
-is 0 errors, 0 warnings, 2 documented notes.
+(`.github/workflows/fuzz-smoke.yaml`). ~7760 tests; `R CMD check --as-cran`
+is 0 errors, 0 warnings, and notes that are documented in `cran-comments.md`.
 
 **What is left, and why it is blocked.** Stage 9 (comparison tracing),
 Stage 10's preload half, Gate B's engine half and Stage 12's
@@ -254,6 +255,28 @@ zufuzz never owns a sanitizer. **The recommended 0.1 configuration is the
 worker path**: run `afl-fuzz` over a sanitized R build (`rocker/r-devel-san`,
 `wch1/r-debug`). No libFuzzer is in the process and `counters.c` references no
 sancov symbol, so there is no symbol conflict and nothing is preloaded.
+
+`R/sanitizer.R` reads a report out of a dead process's log -- kind, category,
+`SUMMARY:`, top frames, signal -- and fingerprints it as kind + category +
+the top frame that is neither a sanitizer interceptor nor an R evaluator
+frame. Three rules there are load-bearing and were each learned the hard way:
+UBSan's `SUMMARY` has **no `in <function>` part**, a LeakSanitizer report is a
+configuration fault rather than a finding (zufuzz disables LSan on purpose),
+and the fingerprint must exclude the build path or every reproduction in a
+different tree reads as a different bug. A bare signal is recorded but never
+fingerprinted, so `minimize()` refuses it. `sanitizer_status()` reports
+`sanitized` only when the runtime is mapped into the process; build flags and
+`LD_PRELOAD` are evidence, not proof. Frames from glibc's fortified string wrappers
+(`string_fortified.h`, anything under `/usr/include/`) are filtered for the
+same reason: an overflow through `memcpy` reports the wrapper before the
+caller, and that frame is identical for every such overflow anywhere.
+
+Fixtures in `tests/testthat/fixtures/sanitizer/` are real clang output -- do
+not replace them with invented text. The fortified-wrapper bug was invisible
+to every hand-written fixture and only appeared once
+`docker/verify-sanitizer-path.R` produced a real glibc report, which is why
+that script exists alongside the unit tests rather than instead of them. See
+`vignette("sanitizers")`.
 
 The companion's in-process path needs the preload: ASan's runtime defines the
 sancov callbacks itself (weakly, feeding its own coverage dumper) and the

@@ -1,0 +1,6 @@
+=================================================================
+==73639==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000f8 at pc 0x000103cfa543 bp 0x7ff7bc719720 sp 0x7ff7bc718ed0
+WRITE of size 16 at 0x6020000000f8 thread T0
+    #0 0x000103cfa542 in __asan_memcpy+0xeb2 (libclang_rt.asan_osx_dynamic.dylib:x86_64h+0x9c542)
+    #1 0x0001037e5877 in main san.c:10
+    #2 0x7ff8118cc52f in start+0xbef (dyld:x86_64+0xfffffffffffde52f)

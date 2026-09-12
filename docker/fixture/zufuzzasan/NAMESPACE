@@ -1,0 +1,2 @@
+useDynLib(zufuzzasan, .registration = TRUE)
+export(consume)

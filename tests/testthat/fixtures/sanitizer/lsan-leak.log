@@ -1,0 +1,10 @@
+
+=================================================================
+==4242==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 8 byte(s) in 1 object(s) allocated from:
+    #0 0x55a1b2c3d4e5 in malloc (/usr/lib/libasan.so.8+0x9f842)
+    #1 0x7f2a1b2c3d4e in zujson_parse_number /src/zujson/src/parse.c:118
+    #2 0x7f2a1b2c4000 in do_dotcall /src/R/src/main/dotcode.c:1281
+
+SUMMARY: LeakSanitizer: 8 byte(s) leaked in 1 allocation(s).

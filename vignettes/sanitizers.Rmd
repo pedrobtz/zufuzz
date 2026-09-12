@@ -1,0 +1,171 @@
+---
+title: "Sanitizers"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Sanitizers}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+library(zufuzz)
+```
+
+Most R packages that matter to a fuzzer have C or C++ underneath. A fuzzer on
+its own only notices a native bug when the process actually dies, and the
+memory-safety bugs worth finding usually do not die at the point of the
+defect. They corrupt something and carry on, and the crash — if it comes at
+all — happens somewhere else, on a later input, in unrelated code.
+
+A sanitizer closes that gap. It turns "wrote four bytes past the end of a
+buffer" into a report and an immediate death, at the line responsible.
+
+**zufuzz never owns a sanitizer.** It orchestrates processes that have one,
+reads the reports they leave behind, and tells you when a run you believed was
+sanitized was not. That is the same split Atheris and Ruzzy make.
+
+## Three separate capabilities
+
+Keeping these apart explains why some of this works everywhere and some of it
+does not.
+
+| Capability | Who provides it | Needs |
+| --- | --- | --- |
+| Catching a native crash and saving the input | the engine's signal handling | nothing |
+| Detecting memory-safety and UB bugs that do not crash | the ASan/UBSan runtime compiled into the target | a sanitized build |
+| Native coverage feedback | Clang SanitizerCoverage, delivered to an in-process engine | the companion package |
+
+The first is always available. The second is what this vignette is about. The
+third is not in 0.1.0.
+
+## The recommended configuration
+
+Run `afl-fuzz` over an R that is itself a sanitized build. The R process that
+runs your target is an ordinary child of the supervisor, the sanitizer runtime
+is simply present, and nothing has to be preloaded or injected.
+
+Community images that already have this:
+
+- `rocker/r-devel-san` — GCC, ASan + UBSan
+- `rocker/r-devel-ubsan-clang` — Clang, UBSan
+- `wch1/r-debug` — supplies `RDsan` and `RDcsan` binaries
+
+Install your target package *inside* the image, so it is compiled with the
+same instrumentation, then run the campaign as usual:
+
+```sh
+ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0:allocator_may_return_null=1:abort_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+afl-fuzz -i corpus -o out -- Rscript harness.R
+```
+
+`zufuzz::sanitizer_options()` returns those two strings, so you can pass them
+to a child rather than retyping them:
+
+```r
+fuzz_file("harness.R", corpus = "corpus", engine = "afl",
+          env = sanitizer_options())
+```
+
+### Why each option
+
+None of these are stylistic; a campaign misbehaves without them.
+
+- **`detect_leaks=0`** — R deliberately leaves allocations for the OS to
+  reclaim at exit. With leak detection on, every run ends in a leak report,
+  and real findings are buried under them. A leak report from a zufuzz run
+  therefore means this option did not reach the process, and zufuzz reports it
+  as a configuration fault rather than as a finding.
+- **`allocator_may_return_null=1`** — lets a huge allocation reach R's own
+  out-of-memory path, where it becomes an R error. Without it ASan aborts and
+  you get a "finding" that is really the fuzzer asking for 2 GB.
+- **`abort_on_error=1`** — makes a report end in `SIGABRT`. This one is
+  load-bearing: without it ASan exits with status 1, and a supervisor watching
+  for a crash records *nothing at all*. The campaign looks clean.
+- **`halt_on_error=1`** — UBSan otherwise prints and continues, so the input
+  that caused it is long gone by the time anything notices.
+
+## Check that it took effect
+
+The failure worth designing against is a sanitized campaign that quietly was
+not one: it finds fewer bugs, exits zero, and looks exactly like a clean run.
+
+```r
+sanitizer_status()
+#> <zufuzz sanitizer status>
+#>   sanitized (asan)
+#>    - runtime mapped into this process: asan
+```
+
+`sanitized` is `TRUE` only when the runtime is actually mapped into the
+process — read from `/proc/self/maps`. Build flags and `LD_PRELOAD` are
+reported as evidence but never counted as proof: they say what was asked for,
+not what happened. On platforms with no `/proc`, the status says `unknown`
+rather than guessing in either direction.
+
+## What a native finding looks like
+
+A sanitizer abort kills the process outright, so no R code runs afterwards and
+there is no R condition to record. zufuzz rebuilds the finding from the log:
+
+```r
+res <- replay("harness.R", "crash-9c1185a5...")
+res$outcome
+#> [1] "sanitizer"
+res$native$category
+#> [1] "heap-buffer-overflow"
+res$native$top_frames
+#> [1] "zujson_decode_utf8 utf8.c:204" "zujson_parse parse.c:77"
+```
+
+Two details in `top_frames` are deliberate. The sanitizer's own interceptors
+are dropped — frame #0 of a heap overflow is `__asan_memcpy`, which is true
+and tells you nothing — and so are R's evaluator frames, which appear in
+every finding and so cannot tell two bugs apart.
+
+The fingerprint is the kind, the category, and the top frame that belongs to
+your code. Not the address, the pid, the shadow bytes, or the build directory:
+those change between runs of the same defect, and a fingerprint that follows
+them would match nothing and gate nothing.
+
+## Findings that cannot be minimized
+
+`minimize()` refuses two kinds of native finding, and the refusal is the
+correct answer rather than a limitation:
+
+- **A bare signal with no report.** Nothing describes the defect, so a smaller
+  input that also dies cannot be shown to die of the *same* thing. Both
+  `afl-tmin` and libFuzzer's `-minimize_crash` will happily shrink one crash
+  into a different one and report success; zufuzz will not. Re-run under a
+  sanitized build to get a report worth shrinking.
+- **A leak report**, which means the options above did not take effect.
+
+The artifact is still saved in both cases. It is a real input that killed a
+real process, and it is worth keeping.
+
+## What sanitizers will not catch in R
+
+- **Missing `PROTECT` and premature GC.** Not memory-unsafe from ASan's point
+  of view — the memory is still mapped and still valid; it is just no longer
+  yours. Use `fuzz(gc_torture = TRUE)` as the complement, and `rchk` for
+  static checking.
+- **Deep recursion in R code**, which surfaces as R's "C stack usage" error.
+- **R API misuse** such as passing the wrong `SEXP` type, which R's own checks
+  usually report as an ordinary R error — already a finding.
+
+## Platforms
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Sanitized R build + AFL++ | yes, recommended | untested | no |
+| Runtime detection | yes | reports `unknown` | reports `unknown` |
+| Reading a report someone else captured | yes | yes | yes |
+
+Parsing, fingerprinting and refusing to minimize are pure R and work
+everywhere, including on a report captured on another machine.
+
+Stock R plus a sanitized target package — which needs the runtime preloaded
+ahead of R, the way Atheris ships `asan_with_fuzzer.so` — is **not available
+in 0.1.0**. It requires the in-process companion engine, and
+`preload_path()` arrives with it.

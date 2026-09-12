@@ -17,3 +17,11 @@ docs
 .zufuzz/
 /doc/
 /Meta/
+
+# The sanitizer fixtures are captured program output and belong in the repo.
+# A global gitignore with `*.log` -- a common personal setting -- would drop
+# them silently, and the suite would then fail in CI while passing locally.
+!tests/testthat/fixtures/sanitizer/*.log
+
+# Written by docker/verify-sanitizer-path.R; promoted to a fixture by hand.
+docker/asan-report-captured.log

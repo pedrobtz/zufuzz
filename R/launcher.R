@@ -36,6 +36,7 @@ fuzz_file <- function(path, corpus = NULL, args = character(), ...,
   if (!file.exists(path)) {
     stop("zufuzz: no such harness: ", path, call. = FALSE)
   }
+  warn_if_unsanitized(env)
 
   resolved <- resolve_engine(engine)
   if (!identical(resolved, "none") && !engine_available(resolved)) {
@@ -428,4 +429,34 @@ afl_tool <- function(tool, args, timeout = 300, env = character()) {
     error_on_status = FALSE,
     timeout = timeout
   )
+}
+
+
+# Asking for sanitizer options and not getting a sanitizer is the quiet
+# failure design section 10 exists to prevent: the campaign runs, finds less,
+# and exits zero, which is indistinguishable from a clean result. Saying so
+# costs one warning and saves a false "we fuzzed it under ASan".
+#
+# A warning rather than an error, because the run is still worth having, and
+# because detection is only possible where /proc/self/maps is -- everywhere
+# else this stays silent rather than nagging about something it cannot check.
+warn_if_unsanitized <- function(env, status = sanitizer_status()) {
+  if (!length(env) || is.null(names(env))) {
+    return(invisible(FALSE))
+  }
+  asked <- any(names(env) %in% c("ASAN_OPTIONS", "UBSAN_OPTIONS"))
+  if (!asked) {
+    return(invisible(FALSE))
+  }
+  if (!status$detectable || status$sanitized) {
+    return(invisible(FALSE))
+  }
+  warning(
+    "zufuzz: sanitizer options were given, but no sanitizer runtime is ",
+    "loaded in this R. The campaign will run unsanitized: memory errors ",
+    "that do not crash outright will go unnoticed. See ",
+    "vignette(\"sanitizers\", package = \"zufuzz\").",
+    call. = FALSE
+  )
+  invisible(TRUE)
 }
