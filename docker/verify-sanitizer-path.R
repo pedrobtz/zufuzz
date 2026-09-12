@@ -207,7 +207,17 @@ say("")
 say("  kind        : ", report$kind)
 say("  category    : ", report$category)
 say("  signal      : ", report$signal_name %||% NA)
-say("  top frame   : ", if (length(report$top_frames)) report$top_frames[[1]] else "<none>")
+for (i in seq_along(report$top_frames)) {
+  say("  frame ", i, "     : ", report$top_frames[[i]])
+}
+if (!length(report$top_frames)) say("  frames      : <none>")
+
+# Keep the raw report: it is the only real glibc-shaped output this project
+# ever sees, and tests/testthat/fixtures/sanitizer/ is supposed to hold
+# captured output rather than output someone imagined.
+raw <- file.path(dirname(root), "asan-report-captured.log")
+writeLines(strsplit(crash$stderr, "\n")[[1]], raw)
+say("  raw report  : ", raw)
 
 if (!identical(report$kind, "asan")) {
   fail("expected an ASan report, got kind '", report$kind, "'")
@@ -221,9 +231,17 @@ if (!identical(report$category, "heap-buffer-overflow")) {
 if (!identical(report$signal, 6L)) {
   fail("expected SIGABRT from abort_on_error=1, got signal ", report$signal)
 }
-if (!length(report$top_frames) || !any(grepl("C_consume", report$top_frames))) {
-  fail("the top frames do not name the function that overflowed: ",
-       paste(report$top_frames, collapse = " | "))
+# The *first* frame, not merely some frame. Checking "anywhere in the list"
+# is what let this pass while frame 1 was `memcpy string_fortified.h:29` --
+# glibc's inline fortified wrapper, which is identical for every memcpy
+# overflow everywhere and which the fingerprint was being built on.
+if (!length(report$top_frames)) {
+  fail("a described defect produced no frames at all")
+}
+if (!grepl("C_consume", report$top_frames[[1]])) {
+  fail("frame 1 is not the function that overflowed, it is: ",
+       report$top_frames[[1]], "\n  (all frames: ",
+       paste(report$top_frames, collapse = " | "), ")")
 }
 
 fp <- fingerprint_sanitizer(report)

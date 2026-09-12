@@ -69,3 +69,13 @@ jobs:
         env:
           ZUFUZZ_REQUIRE_SANITIZER: 1
         run: Rscript docker/verify-sanitizer-path.R
+
+      # The captured report is the only real glibc-shaped ASan output this
+      # project sees; fixtures are supposed to be captured, not imagined.
+      - name: Keep the captured report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-report-captured
+          path: docker/asan-report-captured.log
+          if-no-files-found: warn

@@ -42,6 +42,19 @@ sanitizer_runtime_frame <- paste0(
   "|_?_interceptor_|^wrap_|GET_CALLER_PC"
 )
 
+# glibc's fortified string functions are inline wrappers in system headers, so
+# an overflow through memcpy reports `memcpy string_fortified.h:29` *before*
+# the caller that actually got the length wrong. That frame is byte identical
+# for every memcpy overflow in every package, so a fingerprint built on it
+# would merge unrelated defects into one bug. Found by the end-to-end check in
+# docker/verify-sanitizer-path.R -- the only place a real glibc report appears,
+# and not something any hand-written fixture would have shown.
+libc_wrapper_frame <- paste0(
+  "/usr/include/|/bits/|_fortified\\.h|/sysdeps/",
+  # Bare interceptor names that arrive with no file of their own.
+  "|^(mem|str|wmem|wcs)[a-z]+[[:space:]]"
+)
+
 r_runtime_frame <- paste0(
   "(^|[^[:alnum:]_])(Rf_|R_|do_|bcEval|Rprintf|Rvprintf)",
   "|libR\\.|libR-|R\\.framework|/src/main/|\\bRmain\\b|\\bmain\\b.*Rmain",
@@ -82,6 +95,7 @@ informative_frames <- function(frames, limit = 5L) {
   }
   kept <- frames[
     !grepl(sanitizer_runtime_frame, frames) &
+      !grepl(libc_wrapper_frame, frames) &
       !grepl(r_runtime_frame, frames)
   ]
   if (!length(kept)) {
