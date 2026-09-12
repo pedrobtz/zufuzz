@@ -73,13 +73,27 @@ Two things make a red build mean less than it looks, both observed:
   assumed to be the fork-server protocol and was actually Bioconductor being
   unreachable.
 
-  After this happened three times in half an hour, both jobs now pin
-  `options(repos)` to CRAN before checking. zufuzz depends on nothing from
-  Bioconductor, so consulting it was never useful here. The step **asserts
-  the pin took effect, from a fresh R process**, because parts of check run
-  under `--vanilla` and the site profile is not always writable: a pin that
-  silently failed to apply would look exactly like one that worked, right up
-  until the next outage.
+  After this happened three times in half an hour, both jobs now point every
+  repository at CRAN before checking. zufuzz depends on nothing from
+  Bioconductor, so consulting it was never useful here.
+
+  **The lever is `R_REPOSITORIES`, not `options(repos)`,** and getting that
+  wrong is instructive. The first attempt appended `options(repos=)` to
+  `Rprofile.site` and asserted that a fresh `Rscript` saw it. The assertion
+  passed; the build still went red. Check's dependency step runs under
+  `--vanilla`, which skips site profiles and falls back to the repositories
+  *file* named by `R_REPOSITORIES` -- so the assertion had confirmed a
+  process that was not the one doing the work. **An assertion is only worth
+  what it exercises.** The current one runs
+  `tools:::.get_standard_repository_URLs()` in a `--vanilla` child, which is
+  the exact call check makes, and both of its guards were checked against a
+  deliberately broken override before being trusted.
+
+  That function uses `getOption("repos")` only when `CRAN`, `BioCsoft`,
+  `BioCann` and `BioCexp` are all present and `CRAN` is not `"@CRAN@"`;
+  otherwise it reads the file. Giving all four names a CRAN URL satisfies it
+  without resolving a Bioconductor host and without leaving an `NA`, which
+  `available.packages()` fails on -- the second thing the step asserts.
 
 - **The AFL campaign test uses `-V` where this file's own rule says `-E`.**
   The rule above says feedback tests use fixed `-seed` and `-runs` (or AFL's

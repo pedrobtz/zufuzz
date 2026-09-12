@@ -51,33 +51,64 @@ jobs:
       # under error-on "warning", reddens a build that is otherwise perfect.
       # That happened three times in half an hour.
       #
-      # The assertion matters as much as the pin. Parts of check run under
-      # --vanilla and ignore profiles, and the site profile is not always
-      # writable, so a pin that quietly failed to apply would look exactly
-      # like one that worked -- until the next outage. It is checked from a
-      # *fresh* R process, because this one started before the file existed.
-      - name: Pin repositories to CRAN, and prove it took effect
+      # The lever is R_REPOSITORIES, not options(repos). The first attempt
+      # here appended options(repos=) to Rprofile.site and asserted that a
+      # fresh Rscript saw it. That assertion passed and the build still went
+      # red: check's dependency step runs under --vanilla, which skips site
+      # profiles entirely and falls back to the repositories *file* that this
+      # variable names. The assertion was testing a process that was not the
+      # one doing the work.
+      #
+      # tools:::.get_standard_repository_URLs() uses getOption("repos") only
+      # when CRAN, BioCsoft, BioCann and BioCexp are all present and CRAN is
+      # not "@CRAN@"; otherwise it reads that file. Giving all four names a
+      # CRAN URL satisfies it without ever resolving a Bioconductor host, and
+      # without leaving an NA that available.packages() would then fail on.
+      - name: Point every repository at CRAN, and prove check sees it
         shell: Rscript {0}
         run: |
-          site <- file.path(R.home("etc"), "Rprofile.site")
-          line <- 'options(repos = c(CRAN = "https://cloud.r-project.org"))'
-          wrote <- tryCatch(
-            {
-              cat("\n", line, "\n", sep = "", file = site, append = TRUE)
-              TRUE
-            },
-            error = function(e) FALSE,
-            warning = function(w) FALSE
+          cran <- "https://cloud.r-project.org"
+          path <- file.path(
+            Sys.getenv("RUNNER_TEMP", unset = tempdir()), "cran-only-repositories"
           )
-          cat("wrote", site, ":", wrote, "\n")
+          row <- function(name, default) {
+            paste(name, name, cran, default, "TRUE", "TRUE", "TRUE", sep = "\t")
+          }
+          writeLines(
+            c(
+              paste("menu_name", "URL", "default", "source",
+                    "win.binary", "mac.binary", sep = "\t"),
+              row("CRAN", "TRUE"),
+              row("BioCsoft", "FALSE"),
+              row("BioCann", "FALSE"),
+              row("BioCexp", "FALSE")
+            ),
+            path
+          )
+          # Every later step, check included, inherits this.
+          cat(sprintf("R_REPOSITORIES=%s\n", path),
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE)
+
+          # Assert against the function R CMD check actually calls, in a
+          # --vanilla child: the configuration that defeated the last attempt.
+          # Sys.setenv rather than system2(env=) because the child inherits it
+          # on every platform, including the Windows runner.
+          Sys.setenv(R_REPOSITORIES = path)
+          probe <- file.path(tempdir(), "zufuzz-repo-probe.R")
+          writeLines(
+            'cat(tools:::.get_standard_repository_URLs(), sep = "\n")', probe
+          )
           seen <- system2(
             file.path(R.home("bin"), "Rscript"),
-            c("-e", shQuote("cat(getOption(\"repos\"), sep = \"\\n\")")),
+            c("--vanilla", shQuote(probe)),
             stdout = TRUE
           )
-          cat("a fresh R session sees:\n"); cat(seen, sep = "\n"); cat("\n")
+          cat("R CMD check will consult:\n"); cat(seen, sep = "\n"); cat("\n")
           if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
-            stop("the repository pin did not take effect")
+            stop("the override did not take effect: Bioconductor is still listed")
+          }
+          if (!length(seen) || anyNA(seen) || any(seen == "NA")) {
+            stop("a repository resolved to NA, which available.packages() fails on")
           }
 
       # No fuzzing engine is installed on any of these runners, and that is
@@ -138,33 +169,64 @@ jobs:
       # under error-on "warning", reddens a build that is otherwise perfect.
       # That happened three times in half an hour.
       #
-      # The assertion matters as much as the pin. Parts of check run under
-      # --vanilla and ignore profiles, and the site profile is not always
-      # writable, so a pin that quietly failed to apply would look exactly
-      # like one that worked -- until the next outage. It is checked from a
-      # *fresh* R process, because this one started before the file existed.
-      - name: Pin repositories to CRAN, and prove it took effect
+      # The lever is R_REPOSITORIES, not options(repos). The first attempt
+      # here appended options(repos=) to Rprofile.site and asserted that a
+      # fresh Rscript saw it. That assertion passed and the build still went
+      # red: check's dependency step runs under --vanilla, which skips site
+      # profiles entirely and falls back to the repositories *file* that this
+      # variable names. The assertion was testing a process that was not the
+      # one doing the work.
+      #
+      # tools:::.get_standard_repository_URLs() uses getOption("repos") only
+      # when CRAN, BioCsoft, BioCann and BioCexp are all present and CRAN is
+      # not "@CRAN@"; otherwise it reads that file. Giving all four names a
+      # CRAN URL satisfies it without ever resolving a Bioconductor host, and
+      # without leaving an NA that available.packages() would then fail on.
+      - name: Point every repository at CRAN, and prove check sees it
         shell: Rscript {0}
         run: |
-          site <- file.path(R.home("etc"), "Rprofile.site")
-          line <- 'options(repos = c(CRAN = "https://cloud.r-project.org"))'
-          wrote <- tryCatch(
-            {
-              cat("\n", line, "\n", sep = "", file = site, append = TRUE)
-              TRUE
-            },
-            error = function(e) FALSE,
-            warning = function(w) FALSE
+          cran <- "https://cloud.r-project.org"
+          path <- file.path(
+            Sys.getenv("RUNNER_TEMP", unset = tempdir()), "cran-only-repositories"
           )
-          cat("wrote", site, ":", wrote, "\n")
+          row <- function(name, default) {
+            paste(name, name, cran, default, "TRUE", "TRUE", "TRUE", sep = "\t")
+          }
+          writeLines(
+            c(
+              paste("menu_name", "URL", "default", "source",
+                    "win.binary", "mac.binary", sep = "\t"),
+              row("CRAN", "TRUE"),
+              row("BioCsoft", "FALSE"),
+              row("BioCann", "FALSE"),
+              row("BioCexp", "FALSE")
+            ),
+            path
+          )
+          # Every later step, check included, inherits this.
+          cat(sprintf("R_REPOSITORIES=%s\n", path),
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE)
+
+          # Assert against the function R CMD check actually calls, in a
+          # --vanilla child: the configuration that defeated the last attempt.
+          # Sys.setenv rather than system2(env=) because the child inherits it
+          # on every platform, including the Windows runner.
+          Sys.setenv(R_REPOSITORIES = path)
+          probe <- file.path(tempdir(), "zufuzz-repo-probe.R")
+          writeLines(
+            'cat(tools:::.get_standard_repository_URLs(), sep = "\n")', probe
+          )
           seen <- system2(
             file.path(R.home("bin"), "Rscript"),
-            c("-e", shQuote("cat(getOption(\"repos\"), sep = \"\\n\")")),
+            c("--vanilla", shQuote(probe)),
             stdout = TRUE
           )
-          cat("a fresh R session sees:\n"); cat(seen, sep = "\n"); cat("\n")
+          cat("R CMD check will consult:\n"); cat(seen, sep = "\n"); cat("\n")
           if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
-            stop("the repository pin did not take effect")
+            stop("the override did not take effect: Bioconductor is still listed")
+          }
+          if (!length(seen) || anyNA(seen) || any(seen == "NA")) {
+            stop("a repository resolved to NA, which available.packages() fails on")
           }
 
       - name: Install AFL++
