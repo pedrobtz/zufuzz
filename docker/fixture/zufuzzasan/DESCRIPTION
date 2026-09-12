@@ -1,0 +1,9 @@
+Package: zufuzzasan
+Type: Package
+Title: A Deliberate Heap Overflow For Testing zufuzz
+Version: 0.0.1
+Authors@R: person("zufuzz", "tests", role = c("aut", "cre"), email = "nobody@example.com")
+Description: A native fixture with one memory-safety defect behind a magic
+    prefix. Not for use.
+License: MIT + file LICENSE
+Encoding: UTF-8

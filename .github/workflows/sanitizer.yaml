@@ -1,0 +1,63 @@
+# Proves the sanitized worker path end to end, on the platform that supports
+# it.
+#
+# tests/testthat/test-sanitizer.R parses captured logs: it proves zufuzz reads
+# what a sanitizer writes. It cannot prove the other half -- that a real
+# sanitized R process, run under the documented options, produces a log in the
+# shape the parser expects. Nothing in the unit suite would notice if a future
+# clang changed the SUMMARY grammar, or if abort_on_error stopped producing
+# SIGABRT. This job would.
+#
+# Linux only, deliberately. A package built with -fsanitize=address and loaded
+# into a stock R arrives by dlopen, which is too late for ASan's interceptors,
+# so the runtime has to be preloaded. On macOS that means
+# DYLD_INSERT_LIBRARIES, which System Integrity Protection strips before it
+# reaches the R that `R CMD INSTALL` spawns -- verified by trying it. Design
+# section 10 names Linux as the supported platform for this configuration for
+# exactly that reason.
+
+on:
+  push:
+    branches: [main, master, inital-version]
+  pull_request:
+  workflow_dispatch:
+
+name: sanitizer
+
+permissions: read-all
+
+jobs:
+  sanitized-worker-path:
+    runs-on: ubuntu-latest
+    name: sanitized worker path (ASan)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgload, any::processx
+          needs: check
+
+      # gcc ships libasan on this image, but say so out loud: a silent
+      # fallback to "no runtime found" would turn this job into a skip that
+      # looks like a pass.
+      - name: Show the sanitizer runtime
+        run: |
+          gcc --version | head -1
+          gcc -print-file-name=libasan.so
+
+      - name: Verify the sanitized worker path
+        # Strict: with no runtime the script would otherwise skip and exit 0,
+        # and this job would be a green tick that proved nothing.
+        env:
+          ZUFUZZ_REQUIRE_SANITIZER: 1
+        run: Rscript docker/verify-sanitizer-path.R
