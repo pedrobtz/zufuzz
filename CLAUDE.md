@@ -11,12 +11,26 @@ those two, **the engine is not in this package**. This repository is the CRAN
 package: engine-neutral, no C++, no vendored engine, and no compiled code that
 can terminate R. Engines attach from outside through two seams.
 
-It is currently an **empty package skeleton with a complete written design**.
-There is no instrumentation, no counter region, no protocol code, and no
-behavioral test suite yet — only `R/zufuzz-package.R` (package doc +
-`useDynLib`), `src/zufuzz-package.c` (headers only), and the standard
-`tests/testthat.R` runner. `DESCRIPTION` still holds usethis placeholders.
-**Stage 0 is the next work.**
+It is currently **eleven of fourteen stages complete and merged**, with a
+working tool: it instruments R code, runs campaigns under AFL++ or run-once
+anywhere, writes crash artifacts with JSON sidecars, replays and minimizes
+findings, generates structured R objects deterministically, and proves the
+whole pipeline on every push with a real bounded campaign in CI
+(`.github/workflows/fuzz-smoke.yaml`). ~7690 tests; `R CMD check --as-cran`
+is 0 errors, 0 warnings, 2 documented notes.
+
+**What is left, and why it is blocked.** Stage 9 (comparison tracing),
+Stage 10's preload half, Gate B's engine half and Stage 12's
+guided-vs-unguided arm all need the `zufuzz.libfuzzer` companion package —
+a second, non-CRAN package holding the vendored libFuzzer and the
+`abort()`-calling bridge. **That repository does not exist yet.** Stage 13
+additionally needs a real name in `Authors@R`; it is still the placeholder
+`person("pedrobtz", ...)`, which CRAN will reject.
+
+Before starting anything, read the roadmap's progress tracker: each finished
+stage records what was settled and what was found the hard way, and several
+criteria were amended with reasons rather than met. Do not re-litigate those
+without reading them.
 
 Work is driven by two documents in [.agents/](.agents/), which are the
 authority on intended behavior:
@@ -68,22 +82,33 @@ Rscript -e 'testthat::test_file("tests/testthat/test-fdp.R")'
 Rscript -e 'devtools::check()'               # R CMD check --as-cran (cran = TRUE is the default)
 Rscript -e 'pkgdown::build_site()'           # docs site
 air format .                                 # R formatter; run after editing R/
-Rscript -e 'zufuzz::engines()'               # which engines are available and where (Stage 5)
+Rscript -e 'zufuzz::engines()'               # which engines are available and where
 ```
 
-Running a harness, once the relevant stage lands — the same file in all three:
+Running a harness — the same file, three ways, unchanged:
 
 ```sh
-Rscript fuzz/<harness>.R crash-3f2a...                        # run-once; no engine (Stage 4)
-afl-fuzz -i corpus -o .zufuzz/afl -- Rscript fuzz/<harness>.R # AFL++ worker (Stage 6)
-Rscript fuzz/<harness>.R corpus/ -max_len=4096 -runs=1000     # companion engine (companion E1)
+Rscript fuzz/<harness>.R crash-3f2a...                        # run-once; no engine
+afl-fuzz -i corpus -o .zufuzz/afl -- Rscript fuzz/<harness>.R # AFL++ worker
+Rscript inst/smoke/run-smoke.R                                # the CI smoke campaign
 ```
 
 CI (`.github/workflows/R-CMD-check.yaml`) checks macOS/Windows/Ubuntu against
-R release, devel, and oldrel-1. **Every platform must pass
-`R CMD check --as-cran` with zero NOTEs and no engine installed.** One extra
-Ubuntu job installs `afl++` from apt and one installs the companion; those run
-the engine-dependent tests.
+R release, devel, and oldrel-1, all with **no engine installed** — that is the
+configuration CRAN checks in. One extra Ubuntu job installs `afl++` from apt
+and runs the engine-dependent tests; the companion job will join it when that
+package exists.
+
+The bar is **no errors, no warnings, and only notes that are documented and
+justified** — not zero notes. Two are expected and correct: `unlockBinding`
+(replacing a binding in a locked namespace is what an instrumentation package
+does) and CRAN-incoming (new submission, dev version, unpublished pkgdown
+URL). `cran-comments.md` explains both. Making the first vanish via
+`get("unlockBinding", baseenv())` would hide binding surgery from a reviewer;
+do not.
+
+`.github/workflows/fuzz-smoke.yaml` runs a real bounded campaign on every
+push, because `R CMD check` must never start one.
 
 ## Working rules
 
@@ -105,15 +130,16 @@ the engine-dependent tests.
 - Tests must be deterministic: feedback tests use fixed seeds and budgets
   (`-seed`/`-runs`, or AFL's `-s`/`-E`) on fixtures designed to be solved
   inside that budget; stochastic discovery belongs in `bench/`.
-- Prefer the fake-engine test double (`tests/fixtures/fake-engine.R`, Stage 5)
-  over a real engine wherever the behavior under test is zufuzz's, not the
-  engine's.
+- Drive the launcher with real harness fixtures rather than a mock. The
+  roadmap called for a fake supervisor at Stage 5; it turned out unnecessary,
+  because run-once is itself a real engine and ordinary fixtures produce every
+  `stop_reason`. Simulating a supervisor would test the simulation.
 - Keep new APIs internal until the roadmap stage that exports them.
 - CRAN **is** a 0.1.0 target for this package. Weigh CRAN policy — no
   install-time downloads, no shipped binaries, writes only to
   `tools::R_user_dir()` with consent — before adding anything.
 
-## Planned architecture
+## Architecture
 
 ### The model
 
