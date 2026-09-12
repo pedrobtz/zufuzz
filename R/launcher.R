@@ -402,14 +402,24 @@ import_afl_findings <- function(out_dir, artifact_dir) {
 #' documents them; zufuzz only supplies the command line.
 #'
 #' @noRd
-afl_tool <- function(tool, args, timeout = 300) {
+afl_tool <- function(tool, args, timeout = 300, env = character()) {
   path <- Sys.which(tool)
   if (!nzchar(path)) {
     return(NULL)
   }
+  child_env <- c(
+    Sys.getenv(),
+    AFL_SKIP_BIN_CHECK = "1",
+    AFL_NO_UI = "1",
+    AFL_SKIP_CPUFREQ = "1",
+    R_NO_SEGV_HANDLER = "1"
+  )
+  for (nm in names(env)) {
+    child_env[[nm]] <- env[[nm]]
+  }
   processx::run(
     unname(path), args,
-    env = c(Sys.getenv(), AFL_SKIP_BIN_CHECK = "1", AFL_NO_UI = "1"),
+    env = child_env,
     error_on_status = FALSE,
     timeout = timeout
   )
