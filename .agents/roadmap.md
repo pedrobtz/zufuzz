@@ -65,13 +65,21 @@ zufuzz (CRAN)                                   zufuzz.libfuzzer (r-universe)
 Two things make a red build mean less than it looks, both observed:
 
 - **`error-on: "warning"` promotes transient network failures.**
-  `R CMD check`'s dependency step reaches out to CRAN and Bioconductor; an
-  unreachable index becomes `checking for unstated dependencies ... WARNING`
-  and fails the job. The gate is worth keeping -- it is what catches real
-  warnings -- but **read the log before concluding anything about the code**.
-  A red `afl-engine` job was once assumed to be the fork-server protocol and
-  was actually Bioconductor being unreachable; re-running the same commit
-  passed with no change.
+  `R CMD check` consults every configured repository when it checks for
+  unstated dependencies; an unreachable index becomes
+  `checking for unstated dependencies ... WARNING` and fails the job. The gate
+  is worth keeping -- it is what catches real warnings -- but **read the log
+  before concluding anything about the code**. A red `afl-engine` job was once
+  assumed to be the fork-server protocol and was actually Bioconductor being
+  unreachable.
+
+  After this happened three times in half an hour, both jobs now pin
+  `options(repos)` to CRAN before checking. zufuzz depends on nothing from
+  Bioconductor, so consulting it was never useful here. The step **asserts
+  the pin took effect, from a fresh R process**, because parts of check run
+  under `--vanilla` and the site profile is not always writable: a pin that
+  silently failed to apply would look exactly like one that worked, right up
+  until the next outage.
 
 - **The AFL campaign test uses `-V` where this file's own rule says `-E`.**
   The rule above says feedback tests use fixed `-seed` and `-runs` (or AFL's

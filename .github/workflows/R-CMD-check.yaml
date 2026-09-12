@@ -44,6 +44,42 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      # zufuzz depends on nothing from Bioconductor -- every dependency is
+      # CRAN or base -- but `R CMD check` consults every configured repository
+      # when it checks for unstated dependencies. A Bioconductor outage then
+      # surfaces as `checking for unstated dependencies ... WARNING` and,
+      # under error-on "warning", reddens a build that is otherwise perfect.
+      # That happened three times in half an hour.
+      #
+      # The assertion matters as much as the pin. Parts of check run under
+      # --vanilla and ignore profiles, and the site profile is not always
+      # writable, so a pin that quietly failed to apply would look exactly
+      # like one that worked -- until the next outage. It is checked from a
+      # *fresh* R process, because this one started before the file existed.
+      - name: Pin repositories to CRAN, and prove it took effect
+        shell: Rscript {0}
+        run: |
+          site <- file.path(R.home("etc"), "Rprofile.site")
+          line <- 'options(repos = c(CRAN = "https://cloud.r-project.org"))'
+          wrote <- tryCatch(
+            {
+              cat("\n", line, "\n", sep = "", file = site, append = TRUE)
+              TRUE
+            },
+            error = function(e) FALSE,
+            warning = function(w) FALSE
+          )
+          cat("wrote", site, ":", wrote, "\n")
+          seen <- system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("-e", shQuote("cat(getOption(\"repos\"), sep = \"\\n\")")),
+            stdout = TRUE
+          )
+          cat("a fresh R session sees:\n"); cat(seen, sep = "\n"); cat("\n")
+          if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
+            stop("the repository pin did not take effect")
+          }
+
       # No fuzzing engine is installed on any of these runners, and that is
       # deliberate: it is the configuration CRAN checks in, and the package
       # must install, load and pass with nothing else present. Engine
@@ -94,6 +130,42 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+
+      # zufuzz depends on nothing from Bioconductor -- every dependency is
+      # CRAN or base -- but `R CMD check` consults every configured repository
+      # when it checks for unstated dependencies. A Bioconductor outage then
+      # surfaces as `checking for unstated dependencies ... WARNING` and,
+      # under error-on "warning", reddens a build that is otherwise perfect.
+      # That happened three times in half an hour.
+      #
+      # The assertion matters as much as the pin. Parts of check run under
+      # --vanilla and ignore profiles, and the site profile is not always
+      # writable, so a pin that quietly failed to apply would look exactly
+      # like one that worked -- until the next outage. It is checked from a
+      # *fresh* R process, because this one started before the file existed.
+      - name: Pin repositories to CRAN, and prove it took effect
+        shell: Rscript {0}
+        run: |
+          site <- file.path(R.home("etc"), "Rprofile.site")
+          line <- 'options(repos = c(CRAN = "https://cloud.r-project.org"))'
+          wrote <- tryCatch(
+            {
+              cat("\n", line, "\n", sep = "", file = site, append = TRUE)
+              TRUE
+            },
+            error = function(e) FALSE,
+            warning = function(w) FALSE
+          )
+          cat("wrote", site, ":", wrote, "\n")
+          seen <- system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("-e", shQuote("cat(getOption(\"repos\"), sep = \"\\n\")")),
+            stdout = TRUE
+          )
+          cat("a fresh R session sees:\n"); cat(seen, sep = "\n"); cat("\n")
+          if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
+            stop("the repository pin did not take effect")
+          }
 
       - name: Install AFL++
         run: |
