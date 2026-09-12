@@ -60,6 +60,33 @@ zufuzz (CRAN)                                   zufuzz.libfuzzer (r-universe)
 - Record user-facing changes in `NEWS.md` from Stage 1 on.
 - A failed gate means revise scope or architecture, not build on top.
 
+## Reading a red CI run
+
+Two things make a red build mean less than it looks, both observed:
+
+- **`error-on: "warning"` promotes transient network failures.**
+  `R CMD check`'s dependency step reaches out to CRAN and Bioconductor; an
+  unreachable index becomes `checking for unstated dependencies ... WARNING`
+  and fails the job. The gate is worth keeping -- it is what catches real
+  warnings -- but **read the log before concluding anything about the code**.
+  A red `afl-engine` job was once assumed to be the fork-server protocol and
+  was actually Bioconductor being unreachable; re-running the same commit
+  passed with no change.
+
+- **The AFL campaign test uses `-V` where this file's own rule says `-E`.**
+  The rule above says feedback tests use fixed `-seed` and `-runs` (or AFL's
+  `-s` and `-E`). `tests/testthat/test-afl.R` uses `-s` with
+  `time_limit = 60`, which is `-V`: a wall-clock budget. Fixing AFL's RNG
+  makes the mutation *sequence* deterministic but not how far through it a
+  60-second window gets on a shared runner, so the test is latently flaky --
+  narrowly, since the corpus is seeded one byte from the crash, and it has
+  passed every run so far. If it ever flakes, the fix is `runs =` rather than
+  `time_limit =`, so the campaign performs a fixed number of executions
+  regardless of machine speed. Left as-is rather than swapped for an
+  unverifiable change: AFL cannot be run on the development machine, so the
+  replacement could only be validated by the same CI that the current version
+  already passes.
+
 ## Release scope
 
 `zufuzz 0.1.0` delivers: `fuzz(engine =)`, `instrument()`,
