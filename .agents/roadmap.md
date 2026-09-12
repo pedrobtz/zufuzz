@@ -648,7 +648,44 @@ exactly like a clean run.
 ## Stage 12 — Benchmarks
 
 **Depends on:** Stage 11
-**Status:** [ ] not started
+**Status:** [~] overhead measured; guided-vs-unguided waits on the companion
+
+Overhead, from `bench/overhead.R` (macOS, R 4.5.2, x86_64, 15 repetitions,
+median):
+
+| measurement | plain | instrumented | ratio | per unit |
+| --- | --- | --- | --- | --- |
+| probe, branch-heavy | 0.079 s | 0.308 s | **3.90x** | ~254 ns per probe execution |
+| provider | — | 0.341 s | — | ~17 µs per input |
+| object generation | — | 0.441 s | — | ~220 µs per object |
+
+This is the probe overhead Gate B asks to be measured and published. 3.9x is
+the **worst case**: branch-heavy code where nearly every statement is a probe
+site, and the probe is a `.Call` per branch. Straight-line code pays
+proportionally less, and any target doing real work per input pays less again.
+Published as it is rather than tuned, because the roadmap asks for it measured
+and "not necessarily small".
+
+Three things the script gets right that a naive timing does not, each because
+an earlier version got it wrong:
+
+- **Warm up before timing.** R's JIT compiles a closure after a few calls, so
+  a cold instrumented run against a warm plain one measures the JIT. That is
+  exactly how `bench/gate-b-packages.R` came to show instrumented code as
+  *faster*, and why its timings must not be quoted as overhead.
+- **Clear the clock.** `proc.time()` resolves to about a millisecond; the
+  first version timed 5 ms workloads and reported confident numbers derived
+  from noise. Workloads are now sized so every reported measurement is
+  hundreds of milliseconds, and anything still too fast prints "too fast to
+  time reliably" instead of a number.
+- **A ratio only where both sides do the same work.** The provider row
+  compares "build a provider and consume two values" against "slice a vector".
+  Printing 12x there invited precisely the wrong conclusion, so non-comparable
+  rows report absolute cost only.
+
+Still outstanding: guided vs unguided over >= 30 predeclared seeds at equal
+budget, per-engine execution overhead (in-process vs worker), and sustained-run
+RSS. All need the companion engine package.
 
 Work per design §14: `bench/` harnesses (empty, branch-heavy R, thin `.Call`,
 one real package); probe, provider, and per-execution overhead measured
