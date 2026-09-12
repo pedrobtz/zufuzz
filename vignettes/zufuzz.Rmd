@@ -1,0 +1,193 @@
+---
+title: "Getting started with zufuzz"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with zufuzz}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(zufuzz)
+```
+
+Fuzzing is mechanical: generate an input, run the code, see whether something
+broke, repeat. What makes it useful rather than merely random is *coverage
+guidance* — the engine keeps inputs that reached somewhere new, so it builds
+its way into code a random generator would never reach.
+
+This vignette is about the parts you have to get right for that to pay off.
+
+## The oracle: what counts as a bug
+
+A fuzzer needs a rule for "this input broke something". zufuzz's rule is
+simple and deliberately strict:
+
+> Any condition of class `error` that escapes `test_one_input` is a finding.
+
+Which puts the weight on how you handle input your function is *allowed* to
+reject. Most parsers reject bad input by design, and if every rejection were a
+finding you would get thousands of them and learn nothing.
+
+The wrong way:
+
+```r
+test_one_input <- function(data) {
+  tryCatch(parse_thing(rawToChar(data)), error = function(e) NULL)
+}
+```
+
+That catches the defects too. Every segfault-adjacent bug, every
+`subscript out of bounds`, every corrupted-state error — all silently
+swallowed. The fuzzer will run happily for hours and report nothing.
+
+The right way is to name the class, and wrap only the call that may raise it:
+
+```r
+test_one_input <- function(data) {
+  text <- fuzzed_data_provider(data)$consume_string()
+
+  parsed <- tryCatch(
+    parse_thing(text),
+    thing_parse_error = function(e) NULL   # documented rejection
+  )
+
+  if (!is.null(parsed)) {
+    stopifnot(identical(parse_thing(serialize_thing(parsed)), parsed))
+  }
+}
+```
+
+Now a `thing_parse_error` is uninteresting and anything else is a finding —
+including a `thing_parse_error` raised from the *round trip*, which would be a
+real bug.
+
+If your package signals plain `stop("...")` without a condition class, that is
+worth fixing before fuzzing it: without a class there is no way to separate
+"rejected as designed" from "broke".
+
+`fuzz_function()` enforces this — it refuses `expect = "error"` outright.
+
+## What gets instrumented, and what does not
+
+```{r}
+classify <- function(x) {
+  if (x > 0) "positive" else "negative"
+}
+instrument("classify")
+
+classify(1)
+instrumentation_report()
+```
+
+The rewrite puts a probe at function entry, at each statement of a block, on
+both outcomes of every `if`, and at loop-body entry. It preserves value,
+visibility, laziness, evaluation order, error propagation, `return`/`break`/
+`next`, and `on.exit`.
+
+There are holes, and knowing them is the difference between "my coverage is
+low" and "my coverage is low *because*":
+
+* **Nested function literals are not instrumented.** Rewriting inside
+  `lapply(xs, function(x) ...)` would change what `substitute()` sees of the
+  argument. They are reported instead, so closure-heavy code tells you why its
+  coverage looks thin.
+* **Call arguments are left alone**, for the same reason.
+* **Conditions are entered only to find comparisons**, never to place probes —
+  evaluating a condition twice would change the program.
+* **S4, R6 and reference classes** are out of scope for this release.
+* **Aliases captured before instrumentation** still point at the original.
+  `instrumentation_report()` lists them.
+
+```{r}
+uninstrument()
+```
+
+## Three different claims about reproducibility
+
+These get conflated constantly, and they are not the same claim.
+
+| | means |
+| --- | --- |
+| **input reproduction** | the artifact holds exactly the bytes that were given |
+| **finding reproduction** | a fresh, uninstrumented process fails the same way |
+| **campaign determinism** | same engine, flags, seed and corpus → same decisions |
+
+`replay()` answers the middle one, and it is the one that matters when you
+file a bug:
+
+```r
+replay("harness.R", "crash-3f2a...")
+```
+
+It runs the harness in a new process with instrumentation off. A finding that
+only reproduces against rewritten code is a finding about zufuzz, not about
+your package. A finding that depends on what ran *before* it comes back not
+confirmed, which is also worth knowing before you go hunting.
+
+## Choosing an engine
+
+```{r}
+engines()
+```
+
+`"none"` always works: it runs the inputs you name, once each, and returns.
+That is what `replay()` uses and what makes Windows usable.
+
+`"afl"` needs `afl-fuzz` installed. Two things catch people out, and zufuzz
+warns about both rather than letting them look like success:
+
+* A harness that hardcodes `engine = "none"` will read its inputs and exit
+  without ever speaking the fork-server protocol. Use `engine = "auto"`.
+* A harness that instruments nothing gives AFL an empty coverage map, and AFL
+  aborts with "no instrumentation detected". The campaign never starts.
+
+## Structured input
+
+```{r}
+spec <- r_object(types = c("integer", "character"), max_len = 4)
+xs <- draw(spec, n = 3, seed = 42)
+str(xs)
+```
+
+Every object is a pure function of its bytes, so it has an exact on-disk
+form. Keep the interesting ones as corpus seeds with `as_seed()`, and turn a
+crash artifact back into the object that caused it with `object_from()`.
+
+The `nasty` validity level — the default — includes `NA` of every type, `NaN`,
+`±Inf`, `-0`, zero-length vectors, duplicate and empty names, and `latin1`
+encoding marks. All of that is legal R that most code never sees in testing. A
+crash on any of it is a defect. `strict` restricts generation to what base
+constructors produce.
+
+## Native code and sanitizers
+
+zufuzz never owns a sanitizer; it arranges for one to be present.
+
+The simplest configuration is a sanitized R build (`rocker/r-devel-san`,
+`wch1/r-debug`) running as an AFL worker. Nothing is preloaded, because
+zufuzz's own compiled code references no sanitizer symbol at all.
+
+```sh
+ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1:abort_on_error=1 \
+  afl-fuzz -i corpus -o out -- Rscript harness.R
+```
+
+`detect_leaks=0` because R leaves allocations for the OS at exit and the
+reports are noise; `allocator_may_return_null=1` so R's own out-of-memory path
+is reached rather than an abort.
+
+For the R-specific bug class no sanitizer sees — a missing `PROTECT` — use
+`fuzz(gc_torture = TRUE)`. Expect a large slowdown, and pair it with ASan
+rather than choosing between them.
+
+## Windows
+
+Everything except a campaign. You can instrument, generate objects, replay an
+artifact a colleague found, minimize it, and report coverage. No fuzzing
+engine runs under Rtools, so campaigns want WSL or a container.
+
+```{r}
+engine_available("none")
+```

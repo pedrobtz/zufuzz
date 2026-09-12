@@ -12,3 +12,5 @@
 ^docker$
 ^\.vscode$
 ^\.claude$
+^doc$
+^Meta$

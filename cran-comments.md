@@ -26,9 +26,15 @@ We considered routing the call through `get("unlockBinding", baseenv())` to
 avoid the note and decided against it: the note exists to tell you the package
 does binding surgery, and it does.
 
-The other note is `checking CRAN incoming feasibility`, reporting a new
-submission and that `0.0.0.9000` "contains large components". That is the
-development version; a release will carry a normal three-component version.
+The other note is `checking CRAN incoming feasibility`, which reports three
+things, all expected of a development snapshot:
+
+* a new submission;
+* `0.0.0.9000` "contains large components" — the development version; a
+  release will carry a normal three-component version;
+* `https://pedrobtz.github.io/zufuzz/` returning 404 — the pkgdown site is
+  published by CI on release, so the URL is correct but not yet live. It will
+  resolve before submission.
 
 ## Notes for the reviewer
 

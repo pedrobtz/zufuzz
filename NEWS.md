@@ -1,5 +1,10 @@
 # zufuzz 0.0.0.9000
 
+* Documentation (roadmap Stage 11): a README, a getting-started vignette
+  covering the oracle, instrumentation's holes, the three reproducibility
+  claims, choosing an engine and sanitizer setup, a `pkgdown` reference
+  index, and a `fuzz-smoke` workflow that runs a real bounded campaign on
+  every push.
 * `fuzzed_data_provider()`, `r_object()`, `draw()`, `as_seed()` and
   `object_from()` (roadmap Stage 8). Fuzzed bytes become typed values and
   whole R objects, deterministically: the same bytes always give the same

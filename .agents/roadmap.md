@@ -605,7 +605,8 @@ not fingerprinted, and `minimize()` refuses it.
 ## Stage 11 — Documentation, CRAN preparation, CI smoke workflow
 
 **Depends on:** Stages 7–10
-**Status:** [ ] not started
+**Status:** [~] docs, vignette, pkgdown and the smoke workflow done; the CRAN
+checklist waits on a real `Authors@R` and on Stages 9–10
 
 Work: reference docs for every export; README with the harness, the three
 ways to run it (`Rscript` under the companion, `afl-fuzz`, `fuzz_file()`),
@@ -622,6 +623,27 @@ R-devel, `urlchecker`, spelling, no examples or tests writing outside
 Complete when `pkgdown::check_pkgdown()` passes, README and vignette run from
 a clean install with no engine, `R CMD check --as-cran` has no errors,
 warnings, or NOTEs on any platform, and `R CMD check` does not start a campaign.
+
+**Amended: "no NOTEs" is not achievable, and pretending otherwise would mean
+hiding things from a reviewer.** Two remain and both are correct:
+
+- `unlockBinding` in `R/instrument.R`. Replacing a binding in a locked
+  namespace is what an instrumentation package does; covr and mockery carry
+  the same note. Routing it through `get("unlockBinding", baseenv())` would
+  make it vanish, but that note exists to tell a reviewer the package does
+  binding surgery, and it does.
+- `checking CRAN incoming feasibility`, reporting a new submission, the
+  development version number, and the pkgdown URL 404ing because the site is
+  not published yet. All three resolve at release.
+
+Both are explained in `cran-comments.md`. The criterion is therefore "no
+errors, no warnings, and only notes that are documented and justified".
+
+The campaign that `R CMD check` must never start lives in
+`.github/workflows/fuzz-smoke.yaml` instead: a bounded, seeded run over
+`inst/smoke/harness.R` under AFL++, which fails loudly if the campaign never
+started rather than passing quietly -- the failure mode that otherwise looks
+exactly like a clean run.
 
 ## Stage 12 — Benchmarks
 

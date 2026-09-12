@@ -23,9 +23,13 @@ Imports:
     tools,
     utils
 Suggests:
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0)
 SystemRequirements: AFL++ (optional, only for engine = "afl")
-URL: https://github.com/pedrobtz/zufuzz
+URL: https://github.com/pedrobtz/zufuzz,
+    https://pedrobtz.github.io/zufuzz/
 BugReports: https://github.com/pedrobtz/zufuzz/issues
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0
