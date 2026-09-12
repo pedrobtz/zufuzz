@@ -1,5 +1,9 @@
 # zufuzz 0.0.0.9000
 
+* `fuzzed_data_provider()`, `r_object()`, `draw()`, `as_seed()` and
+  `object_from()` (roadmap Stage 8). Fuzzed bytes become typed values and
+  whole R objects, deterministically: the same bytes always give the same
+  object, in any session and on any platform. Works with no engine installed.
 * `minimize()` (roadmap Stage 7): shrinks a finding by delta debugging, with
   every candidate confirmed against the original fingerprint, so it stops
   rather than shrink into a different bug. Works with no engine installed and

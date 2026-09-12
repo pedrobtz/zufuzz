@@ -65,6 +65,20 @@ void zufuzz_set_cmp_hook(zufuzz_cmp_hook_fn fn);
 void zufuzz_trace_cmp(uintptr_t pc, const void *a, const void *b, size_t n,
                       int result);
 
+/* fdp.c -- the byte-to-value mapping, shared by the provider and draw(). */
+SEXP zufuzz_fdp_create(SEXP data_);
+SEXP zufuzz_fdp_remaining(SEXP ptr);
+SEXP zufuzz_fdp_consumed(SEXP ptr);
+SEXP zufuzz_fdp_bytes(SEXP ptr, SEXP n_);
+SEXP zufuzz_fdp_int(SEXP ptr, SEXP bits_);
+SEXP zufuzz_fdp_int_in_range(SEXP ptr, SEXP min_, SEXP max_);
+SEXP zufuzz_fdp_double_in_range(SEXP ptr, SEXP min_, SEXP max_);
+SEXP zufuzz_fdp_probability(SEXP ptr);
+SEXP zufuzz_fdp_bool(SEXP ptr);
+SEXP zufuzz_fdp_double(SEXP ptr, SEXP allow_special_);
+SEXP zufuzz_fdp_reset(SEXP ptr);
+SEXP zufuzz_utf8_filter(SEXP bytes_);
+
 /* protocol_afl.c */
 SEXP zufuzz_afl_supported(void);
 SEXP zufuzz_afl_attach(SEXP id_, SEXP size_);
