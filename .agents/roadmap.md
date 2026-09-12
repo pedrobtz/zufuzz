@@ -66,7 +66,8 @@ zufuzz (CRAN)                                   zufuzz.libfuzzer (r-universe)
 `instrument_package()`, `instrument_all()`, `instrumentation_report()`,
 `coverage_out`, `fuzzed_data_provider()`, `r_object()`, `draw()`,
 `as_seed()`, `object_from()`, `engines()`, `engine_available()`,
-`fuzz_file()`, `fuzz_function()`, `replay()`, `minimize()`; R coverage
+`fuzz_file()`, `fuzz_function()`, `replay()`, `minimize()`,
+`uninstrument()`; R coverage
 feedback on two engines; the AFL++ child protocol; crash/timeout/oom
 artifacts with JSON sidecars on every engine; documented sanitizer
 configurations and a Docker image; a CI smoke workflow; benchmarks; a clean
