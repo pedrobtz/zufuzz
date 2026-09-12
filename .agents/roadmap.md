@@ -730,8 +730,28 @@ not fingerprinted, and `minimize()` refuses it.
 ## Stage 11 — Documentation, CRAN preparation, CI smoke workflow
 
 **Depends on:** Stages 7–10
-**Status:** [~] docs, vignette, pkgdown and the smoke workflow done; the CRAN
-checklist waits on a real `Authors@R` and on Stages 9–10
+**Status:** [~] docs, vignettes, pkgdown, the smoke workflow and every
+mechanical checklist item are done; what remains needs a real `Authors@R`
+and Stages 9–10
+
+The checklist, as it actually stands:
+
+| item | state |
+| --- | --- |
+| `R CMD check --as-cran`, six CI platforms, no engine installed | passes: 0 errors, 0 warnings |
+| notes | two, both documented in `cran-comments.md` |
+| `urlchecker::url_check()` | one 404: the pkgdown URL, which is unpublished until release |
+| `spelling::spell_check_package()` | clean, against `inst/WORDLIST` (40 domain terms) |
+| tests and examples write only under `tempdir()` | verified: the suite leaves the repository byte-identical |
+| `R CMD check` never starts a campaign | the smoke campaign lives in its own workflow |
+| `pkgdown::check_pkgdown()` | clean |
+| real `Authors@R` | **blocked** -- still the `person("pedrobtz", ...)` placeholder |
+
+`urlchecker` and `spelling` are release-time checks run from the command
+line, not per-push tests: a spelling test that varies with the runner's
+hunspell dictionary would be exactly the kind of nondeterminism the testing
+rules forbid. `inst/WORDLIST` is what keeps that check meaningful between
+runs.
 
 Work: reference docs for every export; README with the harness, the three
 ways to run it (`Rscript` under the companion, `afl-fuzz`, `fuzz_file()`),
