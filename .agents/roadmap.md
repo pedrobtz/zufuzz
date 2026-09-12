@@ -702,6 +702,26 @@ Four things settled during implementation:
   reported as evidence and `detectable` is FALSE where `/proc` does not
   exist -- "unknown" rather than a guess in either direction.
 
+- **The unit tests could not have found the fingerprinting bug.** They parse
+  captured logs, which proves zufuzz reads what a sanitizer writes; they say
+  nothing about whether a real sanitized R produces a log of that shape.
+  `docker/verify-sanitizer-path.R` closes that: it builds a package with one
+  heap overflow behind a magic prefix, runs a control input that must
+  survive, provokes the defect, and asserts what zufuzz makes of the result.
+  On its first passing run it reported frame 1 as
+  `memcpy /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29` -- glibc's
+  inline fortified wrapper, which appears before the caller that got the
+  length wrong and is byte identical for every `memcpy` overflow in every
+  package. **The fingerprint was being built on it**, so two unrelated
+  overflows would have been filed as one bug. No hand-written fixture would
+  have shown this.
+- **"Somewhere in the list" is not an assertion about the top of the list.**
+  The check that let it through looked for the fixture's function anywhere in
+  the frames, and passed while frame 1 was the wrapper. This is the same
+  shape as the `--vanilla` repository assertion and the ASan runtime chosen by
+  path rather than by loading it: each checked something *adjacent* to the
+  mechanism. Exercise the mechanism, then look at what it produced.
+
 Still outstanding, all of it companion-dependent: the Docker image,
 Configuration B with `preload_path()`, sidecars from sanitizer logs under the
 in-process engine, and the `use_sigaltstack=0` question.

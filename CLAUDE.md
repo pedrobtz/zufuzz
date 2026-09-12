@@ -266,9 +266,17 @@ and the fingerprint must exclude the build path or every reproduction in a
 different tree reads as a different bug. A bare signal is recorded but never
 fingerprinted, so `minimize()` refuses it. `sanitizer_status()` reports
 `sanitized` only when the runtime is mapped into the process; build flags and
-`LD_PRELOAD` are evidence, not proof. Fixtures in
-`tests/testthat/fixtures/sanitizer/` are real clang output -- do not replace
-them with invented text. See `vignette("sanitizers")`.
+`LD_PRELOAD` are evidence, not proof. Frames from glibc's fortified string wrappers
+(`string_fortified.h`, anything under `/usr/include/`) are filtered for the
+same reason: an overflow through `memcpy` reports the wrapper before the
+caller, and that frame is identical for every such overflow anywhere.
+
+Fixtures in `tests/testthat/fixtures/sanitizer/` are real clang output -- do
+not replace them with invented text. The fortified-wrapper bug was invisible
+to every hand-written fixture and only appeared once
+`docker/verify-sanitizer-path.R` produced a real glibc report, which is why
+that script exists alongside the unit tests rather than instead of them. See
+`vignette("sanitizers")`.
 
 The companion's in-process path needs the preload: ASan's runtime defines the
 sancov callbacks itself (weakly, feeding its own coverage dumper) and the
