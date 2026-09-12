@@ -48,25 +48,60 @@ skip <- function(...) {
 # interceptors it needs are resolved. It says so itself, in as many words, and
 # refuses to run. Preloading is the whole of Configuration B.
 
+# Candidates, newest-toolchain-first. gcc ships libasan.so and answers for it
+# by name; clang's compiler-rt names it per architecture.
+asan_candidates <- function() {
+  arch <- R.version$arch
+  out <- character(0)
+  for (cc in unique(c(Sys.getenv("CC", unset = ""), "gcc", "clang"))) {
+    if (!nzchar(cc) || !nzchar(Sys.which(cc))) next
+    hit <- suppressWarnings(tryCatch(
+      system2(cc, "-print-file-name=libasan.so", stdout = TRUE, stderr = FALSE),
+      error = function(e) character(0)
+    ))
+    if (length(hit) && file.exists(hit[[1]])) out <- c(out, hit[[1]])
+
+    # An unfiltered glob here is what broke this script the first time: it
+    # returned libclang_rt.asan-i386.so on an x86_64 runner, ld.so refused it
+    # for the wrong ELF class and carried on *without* it, and the build then
+    # only looked sanitized.
+    rd <- suppressWarnings(tryCatch(
+      system2(cc, "-print-resource-dir", stdout = TRUE, stderr = FALSE),
+      error = function(e) character(0)
+    ))
+    if (length(rd)) {
+      out <- c(out, Sys.glob(file.path(
+        rd[[1]], "lib", "*", sprintf("libclang_rt.asan-%s.so", arch)
+      )))
+    }
+  }
+  unique(out[file.exists(out)])
+}
+
+# A path is not proof. ld.so reports a runtime it cannot preload on stderr and
+# then continues without it, so the only trustworthy test is to preload it and
+# look.
+preloads_cleanly <- function(runtime) {
+  probe <- processx::run(
+    file.path(R.home("bin"), "Rscript"),
+    c("--vanilla", "-e", "cat('ok')"),
+    env = c(
+      Sys.getenv(),
+      "LD_PRELOAD" = runtime,
+      "ASAN_OPTIONS" = unname(sanitizer_options()[["ASAN_OPTIONS"]])
+    ),
+    error_on_status = FALSE
+  )
+  identical(probe$status, 0L) &&
+    !grepl("cannot be preloaded|wrong ELF class", probe$stderr)
+}
+
 asan_runtime <- function() {
-  for (cc in c(Sys.getenv("CC", "gcc"), "gcc", "clang")) {
-    if (!nzchar(Sys.which(cc))) next
-    out <- suppressWarnings(tryCatch(
-      system2(cc, c("-print-file-name=libasan.so"), stdout = TRUE, stderr = FALSE),
-      error = function(e) character(0)
-    ))
-    if (length(out) && file.exists(out[[1]]) && basename(out[[1]]) != "libasan.so") {
-      return(out[[1]])
-    }
-    # clang names it differently and does not answer -print-file-name for it.
-    out <- suppressWarnings(tryCatch(
-      system2(cc, c("-print-resource-dir"), stdout = TRUE, stderr = FALSE),
-      error = function(e) character(0)
-    ))
-    if (length(out)) {
-      hits <- Sys.glob(file.path(out[[1]], "lib", "*", "libclang_rt.asan*.so"))
-      if (length(hits)) return(hits[[1]])
-    }
+  candidates <- asan_candidates()
+  if (!length(candidates)) return(NA_character_)
+  for (cand in candidates) {
+    if (preloads_cleanly(cand)) return(cand)
+    say("  rejected (will not preload here): ", cand)
   }
   NA_character_
 }

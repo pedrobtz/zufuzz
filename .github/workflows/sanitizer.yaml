@@ -47,13 +47,21 @@ jobs:
           extra-packages: any::pkgload, any::processx
           needs: check
 
-      # gcc ships libasan on this image, but say so out loud: a silent
-      # fallback to "no runtime found" would turn this job into a skip that
-      # looks like a pass.
-      - name: Show the sanitizer runtime
+      # The runner's gcc does not ship the ASan runtime by default. Without
+      # it the script falls through to clang's compiler-rt, where an
+      # unfiltered glob once picked the i386 build on an x86_64 machine --
+      # ld.so refused it, carried on without it, and the "sanitized" build
+      # was not one.
+      - name: Install the ASan runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasan8 || sudo apt-get install -y libasan6
+
+      - name: Show what is available
         run: |
           gcc --version | head -1
-          gcc -print-file-name=libasan.so
+          echo "gcc libasan : $(gcc -print-file-name=libasan.so)"
+          echo "arch        : $(uname -m)"
 
       - name: Verify the sanitized worker path
         # Strict: with no runtime the script would otherwise skip and exit 0,
