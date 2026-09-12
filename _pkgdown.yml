@@ -56,3 +56,11 @@ articles:
     navbar: ~
     contents:
       - zufuzz
+
+  - title: Sanitizers
+    desc: >
+      Running a campaign over a sanitized R build, reading the reports it
+      leaves behind, and telling a sanitized run from one that only looked
+      like one.
+    contents:
+      - sanitizers
