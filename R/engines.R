@@ -76,7 +76,7 @@ engines <- function() {
     if (identical(engine, "none")) {
       return(data.frame(
         engine = engine, available = TRUE, found_at = "built in",
-        how = "built in", hint = NA_character_, stringsAsFactors = FALSE
+        how = NA_character_, hint = NA_character_, stringsAsFactors = FALSE
       ))
     }
     # The companion is not probed for until the release that ships it:
@@ -140,7 +140,8 @@ print.zufuzz_engines <- function(x, ...) {
     mark <- if (isTRUE(x$available[[i]])) "yes" else " no"
     cat(sprintf("  %-10s %s", x$engine[[i]], mark))
     if (!is.na(x$found_at[[i]])) {
-      cat(sprintf("   %s (%s)", x$found_at[[i]], x$how[[i]]))
+      cat(sprintf("   %s", x$found_at[[i]]))
+      if (!is.na(x$how[[i]])) cat(sprintf(" (%s)", x$how[[i]]))
     } else if (!is.na(x$hint[[i]])) {
       cat(sprintf("   %s", x$hint[[i]]))
     }

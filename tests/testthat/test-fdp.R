@@ -257,3 +257,17 @@ test_that("reset rewinds to the start", {
 test_that("a provider prints its state", {
   expect_output(print(fuzzed_data_provider(as.raw(1:4))), "data provider")
 })
+
+# The provider's one promise is that nothing errors on any input. A length
+# that arrives as NULL or integer(0) -- a harness computing one and getting
+# nothing -- used to be "subscript out of bounds".
+test_that("a zero-length or absent length is zero, not an error", {
+  fdp <- fuzzed_data_provider(as.raw(1:8))
+  expect_identical(clamp_count(NULL), 0L)
+  expect_identical(clamp_count(integer(0)), 0L)
+  expect_identical(clamp_count(character(0)), 0L)
+
+  expect_identical(fdp$consume_int_list(NULL), integer(0))
+  expect_identical(fdp$consume_double_list(integer(0)), numeric(0))
+  expect_identical(fdp$consume_probability_list(NULL), numeric(0))
+})

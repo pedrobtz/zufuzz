@@ -124,7 +124,15 @@ fuzzed_data_provider <- function(data) {
 # here rather than trusting it is what stops a harness allocating gigabytes
 # because four bytes happened to be 0xFFFFFFFF.
 clamp_count <- function(n, limit = 1e6) {
-  n <- suppressWarnings(as.double(n)[[1L]])
+  # Length-checked before subscripting. `as.double(NULL)[[1L]]` is "subscript
+  # out of bounds", which would break the provider's one promise: nothing
+  # errors, on any input. A harness that computes a length and gets
+  # integer(0) is not doing anything unreasonable.
+  n <- suppressWarnings(as.double(n))
+  if (!length(n)) {
+    return(0L)
+  }
+  n <- n[[1L]]
   if (!isTRUE(is.finite(n)) || n <= 0) {
     return(0L)
   }

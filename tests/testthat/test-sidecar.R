@@ -91,3 +91,9 @@ test_that("a sidecar written without a fingerprint is still well formed", {
   path <- write_artifact(bytes, sc, dir)
   expect_identical(read_sidecar(path)$kind, "timeout")
 })
+
+test_that("the environment capture survives an empty package list", {
+  # order(NULL) errors, and a zero-length named vector has NULL names.
+  expect_silent(capture_environment())
+  expect_true(is.list(capture_environment()$packages))
+})

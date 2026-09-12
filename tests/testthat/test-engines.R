@@ -89,3 +89,12 @@ test_that("engines() prints, and says what still works without one", {
     expect_true(any(grepl("replay|runs inputs once", out)))
   }
 })
+
+test_that("the built-in engine does not print its provenance twice", {
+  out <- capture.output(print(engines()))
+  none_line <- grep("^  none", out, value = TRUE)
+  expect_length(none_line, 1L)
+  # It used to read "built in (built in)", because found_at and how were the
+  # same string and the printer showed both.
+  expect_false(grepl("built in (built in)", none_line, fixed = TRUE))
+})

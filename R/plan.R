@@ -295,6 +295,21 @@ rows_to_df <- function(rows, cols) {
 #'
 #' @noRd
 new_plan <- function(function_plans) {
+  # An empty selection is an ordinary outcome, not an error: asking to
+  # instrument only primitives, or a package whose bindings are all
+  # unsupported, should report that rather than failing with
+  # `order(NULL)`'s "argument 1 is not a vector".
+  if (!length(function_plans)) {
+    return(structure(
+      list(
+        version = instrumentation_version,
+        functions = list(),
+        n_sites = 0L,
+        n_comparisons = 0L
+      ),
+      class = "zufuzz_plan"
+    ))
+  }
   function_plans <- function_plans[order(names(function_plans))]
 
   next_site <- 0L
@@ -360,6 +375,19 @@ plan_sites <- function(plan) {
       check.names = FALSE
     )
   })
+  bind_rows_or_empty(parts, c("function", "id", "kind", "path"))
+}
+
+# rbind() with every part NULL does not return NULL: passing
+# `make.row.names = FALSE` alongside nothing else makes it
+# `rbind(make.row.names = FALSE)`, which is a 1x1 matrix with a row named
+# after the argument. That is how instrumentation_report() came to claim
+# "1 region(s) not instrumented" for a function with nothing skipped.
+bind_rows_or_empty <- function(parts, cols) {
+  parts <- Filter(Negate(is.null), parts)
+  if (!length(parts)) {
+    return(rows_to_df(list(), cols))
+  }
   do.call(rbind, c(parts, list(make.row.names = FALSE)))
 }
 
@@ -376,8 +404,7 @@ plan_skips <- function(plan) {
       check.names = FALSE
     )
   })
-  out <- do.call(rbind, c(parts, list(make.row.names = FALSE)))
-  if (is.null(out)) rows_to_df(list(), c("function", "reason", "path")) else out
+  bind_rows_or_empty(parts, c("function", "reason", "path"))
 }
 
 #' @export
