@@ -42,7 +42,12 @@ capture_environment <- function() {
     os = Sys.info()[["sysname"]],
     locale = Sys.getlocale("LC_CTYPE"),
     lib_paths = .libPaths(),
-    packages = as.list(versions[order(names(versions))])
+    # order(NULL) errors, and a named vector of length zero has NULL names.
+    packages = if (length(versions)) {
+      as.list(versions[order(names(versions))])
+    } else {
+      list()
+    }
   )
 }
 

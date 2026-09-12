@@ -224,8 +224,13 @@ print.zufuzz_result <- function(x, ...) {
       ))
     }
   }
-  if (identical(x$stop_reason, "infrastructure") && nzchar(x$stderr)) {
-    cat("  ", utils::tail(strsplit(x$stderr, "\n")[[1L]], 3L), sep = "\n  ")
+  # Length-checked: `nzchar(character(0))` is logical(0), and `&&` on a
+  # zero-length operand is an error in current R. A print method that can
+  # throw is the worst place for this -- it fails while you are trying to
+  # look at what went wrong.
+  if (identical(x$stop_reason, "infrastructure") &&
+      length(x$stderr) && nzchar(x$stderr[[1L]])) {
+    cat("  ", utils::tail(strsplit(x$stderr[[1L]], "\n")[[1L]], 3L), sep = "\n  ")
     cat("\n")
   }
   invisible(x)

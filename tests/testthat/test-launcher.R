@@ -163,3 +163,15 @@ test_that("extra environment variables reach the child", {
   )
   expect_identical(result$stop_reason, "budget")
 })
+
+test_that("a result prints even when there is no stderr to show", {
+  # nzchar(character(0)) is logical(0), and `&&` on a zero-length operand is
+  # an error in current R. A print method that throws fails exactly when you
+  # are trying to see what went wrong.
+  empty <- new_result(
+    "none", "infrastructure", list(), 0, NA_character_,
+    stderr = character(0)
+  )
+  expect_output(print(empty), "infrastructure")
+  expect_silent(capture.output(print(empty)))
+})
