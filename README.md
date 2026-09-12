@@ -145,7 +145,7 @@ engines()
 #> <zufuzz engines>
 #>   none       yes   built in
 #>   afl        yes   /opt/homebrew/bin/afl-fuzz (PATH)
-#>   libfuzzer   no   provided by the zufuzz.libfuzzer companion package
+#>   libfuzzer   no   provided by the zufuzz.libfuzzer companion package (not yet released)
 ```
 
 | | Linux | macOS | Windows |
