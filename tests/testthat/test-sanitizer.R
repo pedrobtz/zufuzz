@@ -284,3 +284,67 @@ test_that("minimize explains why a native finding cannot be shrunk", {
   expect_null(refuse_native_minimize(asan))
   expect_null(refuse_native_minimize(NULL))
 })
+
+# The rest of this file works on logs captured from a small C binary. This one
+# is the real thing: a heap overflow inside a .Call, in a package built with
+# -fsanitize=address, under a stock Linux R, captured by
+# docker/verify-sanitizer-path.R in CI. It is the only fixture here with R's
+# evaluator in the stack and with glibc's fortified wrappers in it, and it is
+# the shape that exposed a bug no hand-written fixture did.
+
+test_that("glibc's fortified wrapper does not become the defect", {
+  r <- parse_sanitizer_log(log_fixture("asan-glibc-fortified.log"))
+
+  # An overflow through memcpy reports the inline wrapper from
+  # /usr/include/.../string_fortified.h *before* the caller that got the
+  # length wrong. That frame is byte identical for every memcpy overflow in
+  # every package, so building the fingerprint on it merged unrelated bugs.
+  expect_match(r$top_frames[[1L]], "C_consume")
+  expect_false(any(grepl("string_fortified|/usr/include/", r$top_frames)))
+})
+
+test_that("R's evaluator is filtered out of a real in-process crash", {
+  r <- parse_sanitizer_log(log_fixture("asan-glibc-fortified.log"))
+  # This stack has seventeen frames of R below the defect. They are identical
+  # for every finding reached through .Call, so they cannot tell two bugs
+  # apart, and they would bury the one frame anybody wants to see.
+  expect_false(any(grepl(
+    "bcEval|Rf_eval|R_doDotCall|R_execClosure|run_Rmainloop|_start|__libc_start_main",
+    r$top_frames
+  )))
+  expect_true(length(r$top_frames) >= 1L)
+})
+
+test_that("the SUMMARY is kept verbatim even when it names a libc wrapper", {
+  r <- parse_sanitizer_log(log_fixture("asan-glibc-fortified.log"))
+
+  # The sanitizer's own words are recorded unedited -- rewriting them would
+  # make the sidecar disagree with the log a reader is holding. So
+  # `function_name` here really is "memcpy", straight out of the SUMMARY
+  # line, and `top_frames[[1]]` is the answer worth acting on. The two fields
+  # mean different things and this is the case that shows it.
+  expect_match(r$summary, "^SUMMARY: AddressSanitizer: heap-buffer-overflow")
+  expect_identical(r$function_name, "memcpy")
+  expect_match(r$location, "string_fortified\\.h:29$")
+  expect_match(r$top_frames[[1L]], "C_consume")
+})
+
+test_that("a real in-process overflow fingerprints on the package's own frame", {
+  original <- log_fixture("asan-glibc-fortified.log")
+  fp <- fingerprint_sanitizer(parse_sanitizer_log(original))
+
+  expect_false(is.null(fp))
+  expect_match(fp$call, "C_consume")
+  expect_false(grepl("/home/runner", fp$call))
+
+  # CI, a container and a reviewer's checkout build in different directories.
+  moved <- gsub(
+    "/home/runner/work/zufuzz/zufuzz/", "/build/pkg/", original,
+    fixed = TRUE
+  )
+  expect_false(identical(original, moved))
+  expect_identical(
+    fp$digest,
+    fingerprint_sanitizer(parse_sanitizer_log(moved))$digest
+  )
+})

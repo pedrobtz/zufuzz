@@ -1,0 +1,63 @@
+=================================================================
+==6551==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x502000015730 at pc 0x7fa546b624ff bp 0x7ffef4758350 sp 0x7ffef4758340
+WRITE of size 64 at 0x502000015730 thread T0
+    #0 0x7fa546b624fe in memcpy /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29
+    #1 0x7fa546b624fe in C_consume /home/runner/work/zufuzz/zufuzz/docker/fixture/zufuzzasan/src/consume.c:21
+    #2 0x7fa549d0678d in R_doDotCall /tmp/R-4.6.1/src/main/dotcode.c:754
+    #3 0x7fa549d4e144 in bcEval_loop /tmp/R-4.6.1/src/main/eval.c:8682
+    #4 0x7fa549d56379 in bcEval /tmp/R-4.6.1/src/main/eval.c:7515
+    #5 0x7fa549d56379 in bcEval /tmp/R-4.6.1/src/main/eval.c:7500
+    #6 0x7fa549d5674a in Rf_eval /tmp/R-4.6.1/src/main/eval.c:1167
+    #7 0x7fa549d5879d in R_execClosure /tmp/R-4.6.1/src/main/eval.c:2389
+    #8 0x7fa549d594f6 in applyClosure_core /tmp/R-4.6.1/src/main/eval.c:2302
+    #9 0x7fa549d56885 in Rf_applyClosure /tmp/R-4.6.1/src/main/eval.c:2324
+    #10 0x7fa549d56885 in Rf_eval /tmp/R-4.6.1/src/main/eval.c:1280
+    #11 0x7fa549d5bafa in Rf_evalList /tmp/R-4.6.1/src/main/eval.c:3679
+    #12 0x7fa549d56c31 in Rf_eval /tmp/R-4.6.1/src/main/eval.c:1251
+    #13 0x7fa549d90932 in Rf_ReplIteration /tmp/R-4.6.1/src/main/main.c:264
+    #14 0x7fa549d90d87 in R_ReplConsole /tmp/R-4.6.1/src/main/main.c:317
+    #15 0x7fa549d90e3f in run_Rmainloop /tmp/R-4.6.1/src/main/main.c:1235
+    #16 0x55e9bf13809e in main /tmp/R-4.6.1/src/main/Rmain.c:29
+    #17 0x7fa54982a1c9  (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a1c9) (BuildId: 328820b908de8ea1ef79afa8995e302e819163d7)
+    #18 0x7fa54982a28a in __libc_start_main (/usr/lib/x86_64-linux-gnu/libc.so.6+0x2a28a) (BuildId: 328820b908de8ea1ef79afa8995e302e819163d7)
+    #19 0x55e9bf1380d4 in _start (/opt/R/4.6.1/lib/R/bin/exec/R+0x10d4) (BuildId: 88f0f9c124fa2fbaad3324bc1134250393300ed3)
+
+0x502000015738 is located 0 bytes after 8-byte region [0x502000015730,0x502000015738)
+allocated by thread T0 here:
+    #0 0x7fa54a2fd9c7 in malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69
+    #1 0x7fa546b623df in C_consume /home/runner/work/zufuzz/zufuzz/docker/fixture/zufuzzasan/src/consume.c:19
+    #2 0x7fa549d0678d in R_doDotCall /tmp/R-4.6.1/src/main/dotcode.c:754
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29 in memcpy
+Shadow bytes around the buggy address:
+  0x502000015480: fa fa fd fa fa fa fd fd fa fa fd fa fa fa fd fd
+  0x502000015500: fa fa fd fa fa fa fd fd fa fa fd fa fa fa fd fd
+  0x502000015580: fa fa fd fa fa fa fd fa fa fa fd fa fa fa fd fd
+  0x502000015600: fa fa fd fd fa fa fd fa fa fa fd fd fa fa fd fd
+  0x502000015680: fa fa fd fa fa fa fd fd fa fa fd fa fa fa fd fa
+=>0x502000015700: fa fa fd fa fa fa[00]fa fa fa fa fa fa fa fa fa
+  0x502000015780: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000015800: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000015880: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000015900: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x502000015980: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07 
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==6551==ABORTING
