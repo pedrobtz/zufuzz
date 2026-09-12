@@ -215,7 +215,7 @@ if (!length(report$top_frames)) say("  frames      : <none>")
 # Keep the raw report: it is the only real glibc-shaped output this project
 # ever sees, and tests/testthat/fixtures/sanitizer/ is supposed to hold
 # captured output rather than output someone imagined.
-raw <- file.path(dirname(root), "asan-report-captured.log")
+raw <- file.path(root, "asan-report-captured.log")
 writeLines(strsplit(crash$stderr, "\n")[[1]], raw)
 say("  raw report  : ", raw)
 
