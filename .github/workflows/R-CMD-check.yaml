@@ -44,6 +44,73 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      # zufuzz depends on nothing from Bioconductor -- every dependency is
+      # CRAN or base -- but `R CMD check` consults every configured repository
+      # when it checks for unstated dependencies. A Bioconductor outage then
+      # surfaces as `checking for unstated dependencies ... WARNING` and,
+      # under error-on "warning", reddens a build that is otherwise perfect.
+      # That happened three times in half an hour.
+      #
+      # The lever is R_REPOSITORIES, not options(repos). The first attempt
+      # here appended options(repos=) to Rprofile.site and asserted that a
+      # fresh Rscript saw it. That assertion passed and the build still went
+      # red: check's dependency step runs under --vanilla, which skips site
+      # profiles entirely and falls back to the repositories *file* that this
+      # variable names. The assertion was testing a process that was not the
+      # one doing the work.
+      #
+      # tools:::.get_standard_repository_URLs() uses getOption("repos") only
+      # when CRAN, BioCsoft, BioCann and BioCexp are all present and CRAN is
+      # not "@CRAN@"; otherwise it reads that file. Giving all four names a
+      # CRAN URL satisfies it without ever resolving a Bioconductor host, and
+      # without leaving an NA that available.packages() would then fail on.
+      - name: Point every repository at CRAN, and prove check sees it
+        shell: Rscript {0}
+        run: |
+          cran <- "https://cloud.r-project.org"
+          path <- file.path(
+            Sys.getenv("RUNNER_TEMP", unset = tempdir()), "cran-only-repositories"
+          )
+          row <- function(name, default) {
+            paste(name, name, cran, default, "TRUE", "TRUE", "TRUE", sep = "\t")
+          }
+          writeLines(
+            c(
+              paste("menu_name", "URL", "default", "source",
+                    "win.binary", "mac.binary", sep = "\t"),
+              row("CRAN", "TRUE"),
+              row("BioCsoft", "FALSE"),
+              row("BioCann", "FALSE"),
+              row("BioCexp", "FALSE")
+            ),
+            path
+          )
+          # Every later step, check included, inherits this.
+          cat(sprintf("R_REPOSITORIES=%s\n", path),
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE)
+
+          # Assert against the function R CMD check actually calls, in a
+          # --vanilla child: the configuration that defeated the last attempt.
+          # Sys.setenv rather than system2(env=) because the child inherits it
+          # on every platform, including the Windows runner.
+          Sys.setenv(R_REPOSITORIES = path)
+          probe <- file.path(tempdir(), "zufuzz-repo-probe.R")
+          writeLines(
+            'cat(tools:::.get_standard_repository_URLs(), sep = "\n")', probe
+          )
+          seen <- system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("--vanilla", shQuote(probe)),
+            stdout = TRUE
+          )
+          cat("R CMD check will consult:\n"); cat(seen, sep = "\n"); cat("\n")
+          if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
+            stop("the override did not take effect: Bioconductor is still listed")
+          }
+          if (!length(seen) || anyNA(seen) || any(seen == "NA")) {
+            stop("a repository resolved to NA, which available.packages() fails on")
+          }
+
       # No fuzzing engine is installed on any of these runners, and that is
       # deliberate: it is the configuration CRAN checks in, and the package
       # must install, load and pass with nothing else present. Engine
@@ -94,6 +161,73 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+
+      # zufuzz depends on nothing from Bioconductor -- every dependency is
+      # CRAN or base -- but `R CMD check` consults every configured repository
+      # when it checks for unstated dependencies. A Bioconductor outage then
+      # surfaces as `checking for unstated dependencies ... WARNING` and,
+      # under error-on "warning", reddens a build that is otherwise perfect.
+      # That happened three times in half an hour.
+      #
+      # The lever is R_REPOSITORIES, not options(repos). The first attempt
+      # here appended options(repos=) to Rprofile.site and asserted that a
+      # fresh Rscript saw it. That assertion passed and the build still went
+      # red: check's dependency step runs under --vanilla, which skips site
+      # profiles entirely and falls back to the repositories *file* that this
+      # variable names. The assertion was testing a process that was not the
+      # one doing the work.
+      #
+      # tools:::.get_standard_repository_URLs() uses getOption("repos") only
+      # when CRAN, BioCsoft, BioCann and BioCexp are all present and CRAN is
+      # not "@CRAN@"; otherwise it reads that file. Giving all four names a
+      # CRAN URL satisfies it without ever resolving a Bioconductor host, and
+      # without leaving an NA that available.packages() would then fail on.
+      - name: Point every repository at CRAN, and prove check sees it
+        shell: Rscript {0}
+        run: |
+          cran <- "https://cloud.r-project.org"
+          path <- file.path(
+            Sys.getenv("RUNNER_TEMP", unset = tempdir()), "cran-only-repositories"
+          )
+          row <- function(name, default) {
+            paste(name, name, cran, default, "TRUE", "TRUE", "TRUE", sep = "\t")
+          }
+          writeLines(
+            c(
+              paste("menu_name", "URL", "default", "source",
+                    "win.binary", "mac.binary", sep = "\t"),
+              row("CRAN", "TRUE"),
+              row("BioCsoft", "FALSE"),
+              row("BioCann", "FALSE"),
+              row("BioCexp", "FALSE")
+            ),
+            path
+          )
+          # Every later step, check included, inherits this.
+          cat(sprintf("R_REPOSITORIES=%s\n", path),
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE)
+
+          # Assert against the function R CMD check actually calls, in a
+          # --vanilla child: the configuration that defeated the last attempt.
+          # Sys.setenv rather than system2(env=) because the child inherits it
+          # on every platform, including the Windows runner.
+          Sys.setenv(R_REPOSITORIES = path)
+          probe <- file.path(tempdir(), "zufuzz-repo-probe.R")
+          writeLines(
+            'cat(tools:::.get_standard_repository_URLs(), sep = "\n")', probe
+          )
+          seen <- system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("--vanilla", shQuote(probe)),
+            stdout = TRUE
+          )
+          cat("R CMD check will consult:\n"); cat(seen, sep = "\n"); cat("\n")
+          if (any(grepl("bioconductor", seen, ignore.case = TRUE))) {
+            stop("the override did not take effect: Bioconductor is still listed")
+          }
+          if (!length(seen) || anyNA(seen) || any(seen == "NA")) {
+            stop("a repository resolved to NA, which available.packages() fails on")
+          }
 
       - name: Install AFL++
         run: |
