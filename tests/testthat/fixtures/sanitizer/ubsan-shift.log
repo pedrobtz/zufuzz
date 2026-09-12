@@ -1,0 +1,5 @@
+ub.c:2:55: runtime error: shift exponent 40 is too large for 32-bit type 'int'
+    #0 0x00010ec47681 in main ub.c:3
+    #1 0x7ff8118cc52f in start+0xbef (dyld:x86_64+0xfffffffffffde52f)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior ub.c:2:55 

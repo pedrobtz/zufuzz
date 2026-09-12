@@ -12,6 +12,7 @@ Instruments R code so that a coverage-guided fuzzing engine can search for input
 Useful links:
 \itemize{
   \item \url{https://github.com/pedrobtz/zufuzz}
+  \item \url{https://pedrobtz.github.io/zufuzz/}
   \item Report bugs at \url{https://github.com/pedrobtz/zufuzz/issues}
 }
 

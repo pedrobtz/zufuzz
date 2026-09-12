@@ -1,0 +1,16 @@
+=================================================================
+==1234==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000118 at pc 0x7f9c0d1e2f31 bp 0x7ffd41f2a3b0 sp 0x7ffd41f29b58
+READ of size 4 at 0x602000000118 thread T0
+    #0 0x7f9c0d1e2f30 in __asan_memcpy (/usr/lib/x86_64-linux-gnu/libasan.so.8+0x3bf30)
+    #1 0x7f9bf8a11b42 in zujson_decode_utf8 /src/zujson/src/utf8.c:204
+    #2 0x7f9bf8a0c9aa in zujson_parse /src/zujson/src/parse.c:77
+    #3 0x7f9c0c4a1e88 in R_doDotCall /src/R/src/main/dotcode.c:614
+    #4 0x7f9c0c4f2d10 in bcEval /src/R/src/main/eval.c:7121
+    #5 0x7f9c0c50a3c1 in Rf_eval /src/R/src/main/eval.c:1029
+
+0x602000000118 is located 0 bytes after 8-byte region [0x602000000110,0x602000000118)
+allocated by thread T0 here:
+    #0 0x7f9c0d1e3842 in malloc (/usr/lib/x86_64-linux-gnu/libasan.so.8+0x3c842)
+    #1 0x7f9bf8a0c100 in zujson_alloc /src/zujson/src/alloc.c:31
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow /src/zujson/src/utf8.c:204 in zujson_decode_utf8

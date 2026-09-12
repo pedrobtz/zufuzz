@@ -142,11 +142,11 @@ S4/R6/RC instrumentation, and any campaign engine on Windows.
 - [x] Stage 6 — AFL++ worker protocol
 - [x] Stage 7 — `minimize()`
 - [x] Stage 8 — FuzzedDataProvider and R object generation (parallel, after Stage 0)
-- [ ] Gate B — Trustworthy R feedback
+- [~] Gate B — Trustworthy R feedback (package-safety half passed)
 - [ ] Stage 9 — Comparison tracing (companion engine)
-- [ ] Stage 10 — Sanitizer configurations and Docker image
-- [ ] Stage 11 — Documentation, CRAN preparation, CI smoke workflow
-- [ ] Stage 12 — Benchmarks
+- [~] Stage 10 — Sanitizer configurations and Docker image (worker path done)
+- [~] Stage 11 — Documentation, CRAN preparation, CI smoke workflow (CRAN checklist pending)
+- [~] Stage 12 — Benchmarks (overhead published; guided-vs-unguided pending)
 - [ ] Gate C — Useful exploration
 - [ ] Stage 13 — 0.1.0 release
 - [ ] Companion E0 — Foundation with vendored libFuzzer
@@ -664,7 +664,47 @@ semantic change.
 ## Stage 10 — Sanitizer configurations and Docker image
 
 **Depends on:** Stage 6; companion E3 for the preload part
-**Status:** [ ] not started
+**Status:** [~] the worker path, report parsing and detection are done; the
+Docker image and Configuration B wait on the companion
+
+Done, and none of it needed the companion:
+
+- `R/sanitizer.R` reads a report out of a dead process's log and turns it into
+  the sidecar fields section 10 asks for: `kind`, category, the `SUMMARY:`
+  line, the top frames that are not the sanitizer's own interceptors or R's
+  evaluator, the signal, and the options in effect.
+- `sanitizer_options()` supplies the documented option sets; `replay()`
+  classifies a native death through them; `minimize()` refuses a bare signal
+  and a leak report, each with its own reason.
+- `sanitizer_status()` answers "is this actually sanitized", and `fuzz_file()`
+  warns when sanitizer options are passed to an R that has no runtime loaded.
+- `vignette("sanitizers")` documents the recommended worker configuration.
+
+Four things settled during implementation:
+
+- **The fixtures are real clang output, not written from memory**, and that
+  caught two mistakes. UBSan's SUMMARY has no ` in <function>` part and a
+  trailing space, so the obvious regex -- read off the ASan line -- silently
+  drops the location for every UBSan finding. And LeakSanitizer's SUMMARY is
+  a sentence, so the generic parse read `8 byte(s) leaked...` as category
+  "8". A parser tested only against invented input proves nothing except that
+  its author was consistent.
+- **A leak report is a configuration fault, not a finding.** zufuzz disables
+  LSan deliberately, so a leak means `detect_leaks=0` never arrived. Filing
+  it as a defect sends someone after R's own exit behaviour.
+- **The fingerprint must survive a different build tree.** The top frame
+  carries an absolute path; a container, CI and a reviewer's checkout all
+  differ, and keeping the path would report every confirmed reproduction as a
+  different bug. Only the basename goes in.
+- **`sanitized` is TRUE only when the runtime is mapped into the process.**
+  Build flags and `LD_PRELOAD` say what was asked for. Treating either as
+  proof is exactly the silent pass the criterion is about, so they are
+  reported as evidence and `detectable` is FALSE where `/proc` does not
+  exist -- "unknown" rather than a guess in either direction.
+
+Still outstanding, all of it companion-dependent: the Docker image,
+Configuration B with `preload_path()`, sidecars from sanitizer logs under the
+in-process engine, and the `use_sigaltstack=0` question.
 
 Work (design §10 is the reference):
 

@@ -1,0 +1,2 @@
+55a1b2000000-55a1b2001000 r--p 00000000 08:01 1234    /usr/lib/R/bin/exec/R
+7f9c0c400000-7f9c0c900000 r-xp 00000000 08:01 9012    /usr/lib/R/lib/libR.so

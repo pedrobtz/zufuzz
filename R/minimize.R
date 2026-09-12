@@ -117,6 +117,31 @@ refuse_to_minimize <- function(recorded) {
   NULL
 }
 
+# Native findings reach the same gate by a different road, and deserve to be
+# told why rather than handed the generic "no fingerprint" line. Both of these
+# are recorded findings -- the artifact is real and worth keeping -- they just
+# cannot be shrunk safely.
+refuse_native_minimize <- function(native) {
+  if (is.null(native)) {
+    return(NULL)
+  }
+  if (identical(native$kind, "signal")) {
+    return(paste(
+      "this is a bare", native$signal_name %||% "signal",
+      "with no sanitizer report: nothing describes the defect, so a smaller",
+      "input that also dies cannot be shown to die of the same thing.",
+      "Re-run under a sanitized build to get a report worth shrinking"
+    ))
+  }
+  if (isTRUE(native$misconfigured)) {
+    return(paste(
+      "this is a LeakSanitizer report, which means detect_leaks=0 did not",
+      "reach the process; fix the options rather than minimizing the leak"
+    ))
+  }
+  NULL
+}
+
 # One candidate, one fresh process. The environment gate makes the child treat
 # a *different* error as a normal run, so an accelerator that only knows
 # "crashed or not" still cannot wander into another bug.
