@@ -1,6 +1,8 @@
 # zufuzz: coverage-guided fuzzing for R, in the style of Atheris and Ruzzy
 
-**Status:** design, third revision, 2026-09-11. Nothing below is implemented.
+**Status:** design, third revision, 2026-09-11; amended 2026-10-31 with §17,
+the 0.2.0 property-testing scope (nothing in §17 is 0.1.0 work). The
+roadmap's progress tracker records what is implemented.
 **Companion:** [roadmap.md](roadmap.md) (stages, gates, and completion criteria).
 
 The third revision changes the *packaging*, not the model: the engine leaves
@@ -97,6 +99,7 @@ quoting externally.
 | Fingerprint-gated minimization (same bug only) | — | — | yes | |
 | RNG reset per input | — | — | yes | |
 | GC torture for PROTECT bugs | n/a | n/a | yes | |
+| Property-based testing over the same bytes: `forall()`, example database, in-process shrinking, coverage-steered generation | — (Hypothesis has it for Python) | — | — | 0.2.0, §17 |
 | Windows | no | Docker only | installs and checks clean; instrument, provider, generator, replay, minimize, coverage all work; no campaign engine (WSL documented) | |
 
 ### Where we deliberately differ from Atheris
@@ -177,6 +180,18 @@ guarantees, the conservative fingerprint, the raw-bytes-first rule for text, the
 benchmark discipline, the gate mindset, and the whole design of the libFuzzer
 bridge — which now lives in the companion package, verbatim.
 
+### Third revision → 2026-10-31 amendment (property testing, 0.2.0)
+
+Scope added, nothing in 0.1.0 changed. §17 has the design; this table has
+the three places where it touches a recorded position.
+
+| Third revision | Amendment | Reason |
+| --- | --- | --- |
+| §11: "use `hedgehog` for expressive properties over well-formed values; use zufuzz when you want coverage to find the shape." | zufuzz 0.2.0 gains `forall()`, a property-testing front end over the same bytes; `hedgehog` stays the recommendation for stateful (`command()`) testing and for generator algebras with integrated shrinking of composed values. | `hedgehog` 0.2 (2025-11-03) is alive and does QuickCheck well; what no R package does is Hypothesis's model — every generator a deterministic function of a byte stream, so shrinking is generic, a fuzz corpus seeds property tests, failing examples persist and replay first, and coverage steers generation. zufuzz already implements the byte stream (§11), the gated reducer (§9) and per-input R coverage with no engine (§6); the front end is a few hundred lines of R over them. A sibling package would be calls into this one. |
+| §0: "zufuzz implements no mutator, no corpus store, no scheduler." | Unchanged for campaigns. Inside `forall()` only, a bounded generation strategy: five byte operators over examples kept in memory for new coverage, at most `examples` runs, nothing on disk (§17, decision P4). | The rule rejected an in-package *campaign* engine competing with libFuzzer and AFL++ over hours. A unit test runs where no engine can — CRAN's check machines, Windows, an interactive session — and a hundred steered examples there is a different product. Gate P removes P4 if it finds nothing fresh draws do not. This is the row most worth a second look. |
+| §9: `minimize()` confirms every candidate by `replay()` in a fresh process. | One reducer, two oracles: the fresh-process oracle for crash artifacts (unchanged), an in-process `tryCatch` oracle for property failures, which are R errors and never kill the process. | A process per candidate is right for a crash and too slow for a test that must finish inside `R CMD check`. The fingerprint gate is kept in both. |
+| §8: regression fixtures (`tests/testthat/fixtures/fuzz/issue-17.bin`) are committed and replayed by hand-written tests. | An example database, `tests/testthat/_zufuzz/`, written by `forall()` on failure outside `R CMD check` and replayed first on every run. | testthat's `_snaps/` is the precedent for a committed, test-written directory; read-only under check keeps §13's "tests write only under `tempdir()`". |
+
 ## 2. Product boundary
 
 ### 0.1.0 includes
@@ -230,7 +245,9 @@ Native coverage feedback as a supported feature (track N decides), the
 `sanitizer_build()`, `install_engine()` (0.2 — 0.1 prints the package-manager
 command), a LibAFL backend, comparison tracing on the AFL++
 engine (needs CmpLog map writing; 0.2), an R-level custom mutator API, regex
-hooks, S4/R6/RC method instrumentation, and any campaign engine on Windows.
+hooks, S4/R6/RC method instrumentation, any campaign engine on Windows, and
+property testing — `forall()`, the example database, in-process shrinking
+and coverage-steered generation — which is 0.2.0 (§17).
 
 A minimal in-package engine — the only route to native Windows campaigns —
 stays rejected. It is the first revision's design; it would be a mutator,
@@ -1069,16 +1086,25 @@ count.
 
 ### Relationship to existing R packages
 
-[`hedgehog`](https://cran.r-project.org/package=hedgehog) (property-based
-testing, integrated shrinking) and [`fuzzr`](https://cran.r-project.org/package=fuzzr)
-(a fixed battery of awkward arguments) already cover random-input testing, and
-`hedgehog` does it well. zufuzz is not trying to replace either. The
-difference is the driver: QuickCheck-style generators consume an RNG and shrink
-through their own algebra, which cannot be steered by coverage; zufuzz's
-generator consumes bytes, so libFuzzer's feedback loop and minimizer apply
-directly. Use `hedgehog` for expressive properties over well-formed values; use
-zufuzz when you want coverage to find the shape, or when native code is
-involved.
+[`hedgehog`](https://cran.r-project.org/package=hedgehog) 0.2 (2025-11-03;
+property-based testing with integrated shrinking, `forall()` for testthat,
+and sequential state-machine testing through `command()`, `gen.actions()`
+and `expect_sequential()`), [`quickcheck`](https://cran.r-project.org/package=quickcheck)
+0.1.3 (a front end over `hedgehog`) and
+[`fuzzr`](https://cran.r-project.org/package=fuzzr) (a fixed battery of
+awkward arguments) cover random-input testing on CRAN, and `hedgehog` does
+QuickCheck well. The difference is the driver: QuickCheck-style generators
+consume an RNG and shrink through their own algebra, which cannot be steered
+by coverage and cannot be fed from a fuzzing corpus; zufuzz's generator
+consumes bytes, so an engine's feedback loop and the gated minimizer apply
+directly, and — in 0.2.0, §17 — so does a property-testing front end that
+keeps its failing examples, replays them first, and steers generation by
+coverage with no engine installed. In 0.1.0, use `hedgehog` for properties
+and zufuzz when you want coverage to find the shape or native code is
+involved. From 0.2.0, use `hedgehog` for stateful testing and for generator
+algebras that shrink composed values; use zufuzz when a property should
+share its inputs with a fuzz campaign, persist its counterexamples, or report
+what it reached.
 
 ## 12. Launcher, results, CI
 
@@ -1318,6 +1344,8 @@ to C only if the benchmark says so.
 | `fuzz_file()`, `fuzz_function()` | none in the caller | in the child, any engine | yes | no (`infrastructure`: no engine) |
 | `replay()`, `minimize()` | none in the caller | no — run-once in the child | yes | yes |
 | `preload_path()` (companion) | none | no | yes | no |
+| `forall()`, `draw_with()`, `assume()` (0.2.0, §17) | `fdp.c`; `counters.c` when the target is instrumented | no | yes | yes |
+| `as_harness()`, `law_roundtrip()`, `law_deterministic()`, `law_truncation()` (0.2.0, §17) | none in the caller | no | yes | yes |
 
 Three consequences worth stating plainly: the generator, provider,
 instrumentation, replay, minimization, and coverage reporting work on Windows
@@ -1394,3 +1422,269 @@ is a real code path, not a stub.
 13. Whether `-minimize_crash`/`afl-tmin` acceleration actually saves time over
     the gated R-side reducer for typical R error findings, or whether the
     accelerators should be dropped for simplicity.
+14. (§17) Whether `testthat::is_checking()` is the right switch to make the
+    example database read-only, and what `devtools::test()` and
+    `R CMD check` each report through it on all three platforms.
+15. (§17) Capturing testthat 3e `expectation_failure` conditions inside
+    `forall()` without disturbing the reporter's accounting; `hedgehog`'s
+    `forall()` does it and is the first thing to read.
+16. (§17) Shrink quality with LLVM's layout, where integers are consumed
+    from the back and strings from the front: Hypothesis's "shortlex-smaller
+    bytes are simpler values" does not hold, so Gate P measures the result
+    against known minimal examples rather than assuming it. Whether an
+    opt-in front-consumed layout for properties is worth the corpus
+    incompatibility is decided by that measurement.
+17. (§17) The per-example cost of the `.Random.seed` determinism check, and
+    whether `draw_with()` can detect `Sys.time()`-style non-determinism at
+    all beyond re-drawing the failing bytes once.
+
+## 17. Property testing on the same bytes (0.2.0)
+
+Added 2026-10-31. None of it is 0.1.0 work (§2). After Stage 13 ships, a
+new roadmap turns §17's stage table into stages and issues, as the
+portfolio's `building-a-package.md` prescribes for a next version.
+
+### Why here, and what is new
+
+QuickCheck-style property testing is covered on CRAN: `hedgehog` 0.2 has
+generators, integrated shrinking, `forall()` for testthat and sequential
+state-machine testing; `quickcheck` wraps it (§11). The gap is not
+QuickCheck. It is what Hypothesis did to QuickCheck for Python: every
+generator is a deterministic function of a byte stream, so that
+
+- shrinking is one generic byte reducer for every generator, including
+  composed ones;
+- a fuzzing corpus seeds the property tests and a failing property is a
+  fuzz seed, because both are bytes;
+- failing examples persist in a database and replay first on the next run,
+  so a property test stops being flaky and starts being a regression suite;
+- coverage can steer generation, because the engine's view of an input is
+  bytes it can mutate.
+
+zufuzz has the expensive half already, built for fuzzing: the provider and
+`r_object()` are the byte stream and are deterministic by the honesty rule
+of §11; `minimize()` is the fingerprint-gated reducer (§9); `counter_hits()`
+is per-input coverage of R code with no engine attached (§6); run-once mode
+is the in-process execution model that returns (§4). The property-testing
+front end is a few hundred lines of R over those four. In a sibling package
+it would be a package whose only content is calls into this one.
+
+The claim, stated so it can be falsified: **a property test and a fuzz
+harness are the same function of the same bytes.** The differences are who
+supplies the bytes (an engine for hours, or `forall()` for a hundred
+examples inside `R CMD check`) and what a failure becomes (an artifact, or a
+testthat failure holding the shrunk example).
+
+### The shape
+
+```r
+test_that("parse() and serialize() round-trip", {
+  forall(r_object(types = c("list", "character", "double"), max_depth = 3),
+         function(x) expect_identical(parse(serialize(x)), x))
+})
+
+# a domain generator: any function of a provider
+iso_date <- draw_with(function(fdp) {
+  as.Date(fdp$consume_int_in_range(-20000L, 40000L), origin = "1970-01-01")
+})
+forall(list(iso_date, iso_date), function(from, to) {
+  assume(from <= to)
+  expect_true(all(seq(from, to, by = "day") >= from))
+})
+```
+
+```r
+forall(generator, property, examples = 100L, seed = NULL, shrink = TRUE,
+       database = NULL, corpus = NULL, coverage = c("auto", "off", "on"),
+       instrument = NULL, label = NULL)
+draw_with(fn)                # fn(fdp) -> value; composes by calling other draws
+assume(condition)            # discard this example; too many discards fail
+as_harness(generator, property, path)   # the property as a fuzz harness script
+law_roundtrip(encode, decode, generator, ...)
+law_deterministic(f, generator, ...)
+law_truncation(decode, corpus, classes, ...)
+```
+
+- `generator` is an `r_object()` spec, a `draw_with()` function, or a list
+  of either, one per argument of `property`. A spec is itself a function of
+  the provider; `draw_with()` is how domain values are built, by composing
+  provider calls and other draws. There is no generator algebra of its own
+  (decision P2): composition is R function composition over the provider,
+  as Hypothesis's `data()` and `draw()` work, and the byte-to-value mapping
+  stays in `fdp.c` (§15).
+- `property` receives the drawn values. A testthat expectation failure or
+  an escaped error is a failing example; the harness rules of §3 apply
+  (expected rejections are caught narrowly; no generic handler).
+- Every example is bytes. `seed = NULL` derives the byte stream from
+  `label` — by default the enclosing `test_that()` description and file —
+  so a suite is deterministic by default and differs per test; `seed =
+  "random"` explores and prints its seed on failure; `ZUFUZZ_SEED` overrides
+  both for CI exploration (decision P3).
+- On failure, `forall()` shrinks in-process (below), renders the minimal
+  example (the object through `str()`, its bytes, the database entry), saves
+  it, and fails: under testthat through the reporter as an expectation
+  failure, elsewhere as a `zufuzz_property_error`. On success it returns a
+  `zufuzz_property` invisibly: examples run, discards, shrink steps, sites
+  reached when the target is instrumented, and the seed.
+
+### Where examples come from, in order
+
+1. **The database** (below): every stored example for this label runs
+   first, so a known counterexample fails in the first millisecond.
+2. **`corpus`**, when given: an engine corpus directory or an artifact
+   directory, run through the generator. This is the bridge from a campaign:
+   `fuzz_file()` found it, `forall()` keeps checking it.
+3. **Fresh draws** from the derived stream, through `fdp.c`, exactly as
+   `draw()` produces them.
+4. **Steered draws**, when `coverage` is on (below).
+
+### Shrinking, in-process
+
+The §9 reducer is parametrised by an oracle. The fresh-process oracle
+(`replay()` with `ZUFUZZ_EXPECT_FINGERPRINT`) stays what `minimize()` uses
+for artifacts, since a crash must be reproduced in a process that can die.
+The in-process oracle re-draws a candidate's bytes through the generator,
+runs `property` under `tryCatch`, and accepts the candidate only when the
+failure's fingerprint matches the original's: condition classes plus the
+normalised originating call, as §9 defines it, with the **message excluded
+by default** because property messages embed the values being shrunk
+(`expected 3, got 4`); `shrink = "message"` includes it. Passes: the existing
+delta debugging over bytes, then zero-a-block and delete-a-block passes that
+target the provider's layout (integers at the back, strings at the front).
+Before shrinking, the failing bytes are drawn a second time and the object
+compared: a difference means the generator broke the honesty rule, and the
+result says so (`zufuzz_generator_error`) instead of shrinking noise.
+
+Honest limit, recorded as open item 16: Hypothesis's shrinker is good
+because its byte layout makes shortlex-smaller bytes simpler values. The
+provider mirrors LLVM's layout for corpus compatibility and does not have
+that property everywhere. Shrink quality is therefore a measured gate
+(Gate P), not an assumption, and a front-consumed layout for properties is
+an opt-in to consider only if the measurement demands it.
+
+### The example database
+
+testthat's `_snaps/` is the precedent: a directory under `tests/testthat/`
+that tests write, that is committed, and that CI reads. `forall()` writes
+`tests/testthat/_zufuzz/<test-file>/<label>-<sha1-prefix>.bin` on failure,
+bytes only, in the artifact format, so `object_from()`, `replay()` and
+`as_seed()` read it unchanged. It writes only when it is not running under
+`R CMD check` (`testthat::is_checking()`, open item 14) and the directory is
+writable; under check the database is read-only and §13's rule that tests
+write only under `tempdir()` holds. `database = FALSE` disables it;
+`options(zufuzz.database)` and `ZUFUZZ_DATABASE` relocate it. Entries are
+never deleted automatically; `database_prune(path)` removes those whose bytes
+no longer fail, and says so.
+
+### Coverage-steered generation, with no engine
+
+When the target is instrumented — `instrument = "pkg"` on the call, or an
+earlier `instrument_package()` in the test file's setup — `forall()` reads
+`counter_hits()` after each example and keeps, in memory, the examples that
+reached a new site or a new hit-count bucket. With `coverage = "on"` (or
+`"auto"`, which is on exactly when something is instrumented) it spends half
+the remaining budget on steered draws: a kept example's bytes with one of
+five operators applied — flip a byte, set a byte or word to an interesting
+value, delete a block, duplicate a block, splice with another kept example.
+No dictionary, no power schedule, no disk; at most `examples` runs in total.
+The result reports sites reached, so a property test also says how much of
+the package it exercised.
+
+This is the one place §17 touches a recorded rule. §0 and `CLAUDE.md` say
+zufuzz implements no mutator, no corpus store and no scheduler, and the
+reason was an in-package *campaign* engine: hours of search, corpora on
+disk, scheduling, competing with libFuzzer and AFL++ and losing. A unit test
+is a different product. It runs where no engine can — CRAN's check
+machines, Windows, an interactive session — for a hundred examples, and the
+question is only whether a hundred steered examples beat a hundred random
+ones. Decision P4 narrows the rule to campaigns and Gate P answers the
+question with fixtures; if the answer is no, the five operators go and the
+coverage report stays.
+
+### Generators in 0.2.0
+
+- `draw_with(fn)`, with two checks that enforce §11's honesty rule from the
+  outside: `.Random.seed` must be unchanged by a draw (checked on every
+  example; open item 17 measures the cost), and re-drawing a failing
+  example's bytes must give an identical object.
+- `r_object()` gains `types` `"factor"`, `"raw"`, `"complex"` and
+  `"data.frame"` (equal-length columns of the other types; zero-row and
+  zero-column shapes at `nasty`), and an `edges = TRUE` sub-distribution:
+  for doubles subnormals, `.Machine$double.eps` neighbours, 2⁵³ ± 1,
+  `DBL_MAX`, powers of two and exact halves; for integers 0, ±1 and
+  `.Machine$integer.max` neighbours; for strings combining marks, bidi
+  controls, surrogate code points encoded as UTF-8 (invalid), and maximal
+  NUL-free lengths. The validity table of §11 grows a column; nothing moves
+  between levels.
+- Three generic laws, because every format package in the portfolio writes
+  them by hand: `law_roundtrip()` (decode of encode is identical),
+  `law_deterministic()` (two encodes of one object are byte-identical),
+  `law_truncation()` (every proper prefix of every corpus file decodes or
+  raises one of the named classes, never any other error). They are
+  `forall()` calls with a fixed property. Format-specific suites stay out
+  (decision P7).
+
+### Promotion both ways
+
+`as_harness(generator, property, path)` writes a harness script whose
+`test_one_input` draws through the same generator and runs the property, so
+`fuzz_file()` or `afl-fuzz` can spend hours on what the test spent a
+hundred examples on; its findings are property examples (`forall(corpus =)`)
+and its artifacts render with `object_from()`. `as_seed()` moves database
+entries into a corpus. `fuzz_function()` already generates a harness from a
+function; `as_harness()` is the same idea from a property.
+
+### What does not change
+
+The engines, the two seams, `fuzz()` and its modes, §13's CRAN rules (no
+new `Imports`; `testthat` stays in `Suggests`, and `forall()` works without
+it), §15's layering (`R/property.R` depends on `fdp.c` and, when
+instrumented, `counters.c`; the reducer stays in `R/minimize.R` with an
+oracle argument; the in-process path uses no `processx`), and the harness
+rules of §3, which properties inherit.
+
+### Decisions (amendment)
+
+- **P1.** Property testing lives in zufuzz, not in a sibling and not in
+  `hedgehog`: the byte stream, the reducer and the coverage reader are here.
+- **P2.** Generators are functions of the provider; `r_object()` specs are
+  one kind. No `gen.map`/`gen.bind` algebra of its own. The byte-to-value
+  mapping stays in `fdp.c` (§15's rule), so a campaign and a property draw
+  identical objects from identical bytes.
+- **P3.** Deterministic by default: the stream derives from the test label;
+  `seed = "random"` and `ZUFUZZ_SEED` opt into exploration. A test under
+  `R CMD check` never depends on luck.
+- **P4.** Coverage-steered generation runs in-process and bounded (five
+  operators, memory only, at most `examples` runs), narrowing the
+  no-mutator rule to campaigns. Gate P can remove it. **Most worth a second
+  look.**
+- **P5.** The example database is a committed `tests/testthat/_zufuzz/`
+  directory, read-only under `R CMD check`, in the artifact byte format.
+- **P6.** One reducer, two oracles. The fingerprint gate is kept in both;
+  for properties the message is excluded by default.
+- **P7.** Three generic laws ship; format-specific law suites do not.
+- **P8.** `hedgehog` remains the recommendation for stateful (`command()`)
+  testing and for generator algebras with integrated shrinking of composed
+  values. State-machine testing over bytes is a later item, not 0.2.0.
+- **P9.** Nothing in §17 starts before Stage 13 (0.1.0) is released.
+
+### Stages (proposed) and Gate P
+
+| Stage | Delivers | Complete when |
+| --- | --- | --- |
+| P0 | reducer refactor: oracle argument; the in-process oracle | `minimize()`'s tests pass unchanged; a property fixture shrinks in-process |
+| P1 | `forall()`: specs and `draw_with()`, `assume()`, derived seeds, testthat failure, result and `print()` | deterministic fixtures for every argument and both failure kinds |
+| P2 | in-process shrinking, minimal-example rendering, the two determinism checks | shrink-quality suite: ten properties with known minimal examples reached within 1 000 steps each |
+| P3 | the example database, replay-first, `database_prune()` | nothing written under `is_checking()`; replay-first proven by fixture |
+| P4 | coverage-steered generation; sites reached in the result | Gate P |
+| P5 | `r_object()` types and `edges`; validity table extended | §11 tests for every new value |
+| P6 | `as_harness()`, `forall(corpus =)`, the three laws | a property fuzzed under AFL++ in CI, its finding replayed as an example |
+| P7 | vignette "Properties and fuzzing on one input"; benchmarks against `hedgehog` (time per example, shrink steps, minimal-example size) | §14 evidence recorded; `NEWS.md` |
+
+**Gate P.** On at least ten predeclared property fixtures with a planted bug
+reachable only through a specific input shape (nested-prefix and
+magic-string style, as Gates B and C use), `forall(coverage = "on",
+examples = 1000)` finds the bug in at least eight, where fresh draws at the
+same budget find it in at most three; three seeds each; time per example
+reported alongside. A pass keeps P4. A fail removes the five operators and
+keeps the coverage report, and the §1 amendment table records the result.
