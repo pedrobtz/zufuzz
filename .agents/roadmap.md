@@ -131,6 +131,11 @@ validity level, `sanitizer_build()`, `install_engine()`, a LibAFL backend,
 comparison tracing on AFL++, an R custom-mutator API, regex hooks,
 S4/R6/RC instrumentation, and any campaign engine on Windows.
 
+0.2.0's scope is design §17 (property testing on the same bytes: `forall()`,
+the example database, in-process shrinking, coverage-steered generation). It
+has no stages here: a new roadmap plans it after Stage 13, from §17's
+proposed stage table and Gate P.
+
 ## Progress tracker
 
 - [x] Stage 0 — Package foundation, CRAN-shaped

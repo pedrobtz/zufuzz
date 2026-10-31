@@ -39,7 +39,10 @@ authority on intended behavior:
 - [.agents/design-zufuzz.md](.agents/design-zufuzz.md) — third revision.
   Architecture, API, the execution models (§4), coverage sinks (§6), CRAN and
   companion packaging rules (§13), layering (§15), sanitizers (§10), and two
-  tables of what changed between revisions and why (§1).
+  tables of what changed between revisions and why (§1). §17, added on
+  2026-10-31, is the 0.2.0 property-testing scope (`forall()`, the example
+  database, in-process shrinking, coverage-steered generation); it is not
+  0.1.0 work and nothing in it starts before Stage 13 ships.
 - [.agents/roadmap.md](.agents/roadmap.md) — Stages 0–13 for this package, a
   separate companion track E0–E3, three gates, a parallel native-coverage
   track, per-stage completion criteria.
@@ -332,3 +335,9 @@ backend, comparison tracing on the AFL++ engine, an R custom-mutator
 API, regex hooks, S4/R6/RC instrumentation, the `adversarial` validity level,
 and any campaign engine on Windows (develop, instrument, replay, minimize and
 report coverage natively; run campaigns in WSL).
+
+Property testing — `forall()`, `draw_with()`, the `tests/testthat/_zufuzz/`
+example database, in-process shrinking and coverage-steered generation — is
+design §17 and is 0.2.0. Do not pull it forward. Its decision P4 narrows the
+no-mutator rule above to campaigns, bounded and gated; read it before
+touching that rule in either direction.
