@@ -17,8 +17,8 @@
 # exactly that reason.
 
 on:
-  push:
-    branches: [main, master, inital-version]
+  # No `push:`: a pull request already checks its merge with main,
+  # and the schedule checks main (r-actions README, "Pushes to main").
   pull_request:
   workflow_dispatch:
 
